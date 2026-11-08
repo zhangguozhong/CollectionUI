@@ -11,6 +11,8 @@ namespace CollectionUI.Tests
 {
     public class DemoContractTests
     {
+        [SetUp]
+        public void EnsureWritableDemo() => CollectionUI.Editor.CollectionViewDemoSeeder.Generate();
         [Test]
         public void SeededSceneAndPrefabAreStandaloneAndIdempotent()
         {

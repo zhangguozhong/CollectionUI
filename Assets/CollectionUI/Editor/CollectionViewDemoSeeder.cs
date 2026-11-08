@@ -16,9 +16,10 @@ namespace CollectionUI.Editor
         const float TitleHeight = 80, StatisticsHeight = 100, ControlsGap = 24, ControlsHeight = 104, HeaderBottomGap = 32;
         const float HeaderHeight = TitleHeight + StatisticsHeight + ControlsGap + ControlsHeight + HeaderBottomGap;
         const float PageInset = 24, FooterHeight = 128, FooterInset = 16, FooterGap = 16;
-        public const string Folder = "Assets/CollectionUI/Samples/Generated";
-        public const string ScenePath = Folder + "/CollectionViewDemo.unity";
-        public const string PrefabPath = Folder + "/CollectionViewDemo.prefab";
+        public static string Folder => DemoAssetPaths.WritableFolder;
+        public static string ScenePath => Folder + "/CollectionViewDemo.unity";
+        public static string PrefabPath => Folder + "/CollectionViewDemo.prefab";
+
         /// <summary>按明确的父子区域生成演示资源；schema 一致且资源完整时直接返回，确保重复生成不产生无意义变更。</summary>
         [MenuItem("Tools/Collection UI/Generate Demo Assets")]
         public static void Generate()
@@ -120,6 +121,8 @@ namespace CollectionUI.Editor
         [MenuItem("Tools/Collection UI/Export Package")]
         public static void ExportPackage()
         {
+            if (DemoAssetPaths.IsPackage)
+                throw new InvalidOperationException("Export from the source project, or download the published unitypackage from GitHub.");
             Generate();
             ExpandedCollectionDemoSeeder.Generate();
             CollectionInteractionDemoSeeder.Generate();
@@ -128,6 +131,9 @@ namespace CollectionUI.Editor
             Debug.Log("Exported Builds/CollectionUI.unitypackage without external asset dependencies.");
         }
 
+        // UPM 消费工程没有完整 Assets 源码；分发包由源码工程统一导出。
+        [MenuItem("Tools/Collection UI/Export Package", true)]
+        static bool CanExportPackage() => !DemoAssetPaths.IsPackage;
         [MenuItem("Tools/Collection UI/Open Demo")]
         public static void OpenDemo()
         {

@@ -17,7 +17,7 @@ namespace CollectionUI.Tests
         [UnitySetUp]
         public IEnumerator Setup()
         {
-            root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/ExpandedCollectionDemo.prefab"));
+            root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("ExpandedCollectionDemo.prefab")));
             root.GetComponent<CanvasScaler>().enabled = false;
             root.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
             root.GetComponent<Canvas>().scaleFactor = 1;

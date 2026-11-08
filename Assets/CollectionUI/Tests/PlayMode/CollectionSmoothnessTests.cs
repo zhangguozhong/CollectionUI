@@ -226,7 +226,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator LoadingThresholdChangeUpdatesGeometryAndHoldConvergesWithoutJitter()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             var loader = root.AddComponent<CollectionLoader>();
             loader.Configure(prefab, prefab);
             yield return null;
@@ -249,7 +249,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator GrabbingHeldLoadingDoesNotRecompressTheVisiblePull()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             var loader = root.AddComponent<CollectionLoader>();
             loader.Configure(prefab, prefab);
             yield return null;
@@ -272,7 +272,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator LoaderReturnsMotionControlOnDragNavigationAndDisable()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             var loader = root.AddComponent<CollectionLoader>();
             loader.Configure(prefab, prefab);
             yield return null;
@@ -300,7 +300,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator DataAndRefreshCompletionKeepCellsBoundDuringReturn()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             var loader = root.AddComponent<CollectionLoader>();
             loader.Configure(prefab, prefab);
             yield return null;
@@ -366,7 +366,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator BottomLoadingAppendAndCompletionDuringDragKeepPointerContinuous()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             var loader = root.AddComponent<CollectionLoader>();
             loader.Configure(prefab, prefab);
             yield return null;
@@ -395,7 +395,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator PendingPreloadAcrossRealGesturesDoesNotDuplicateAndRejectsOldCompletion()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             var loader = root.AddComponent<CollectionLoader>();
             loader.Configure(prefab, prefab);
             loader.PreloadEnabled = true;
@@ -505,7 +505,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator RealGesturesWithSynchronousPreloadAppendNeverRequestTwice()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             var loader = root.AddComponent<CollectionLoader>();
             loader.Configure(prefab, prefab);
             loader.PreloadEnabled = true;

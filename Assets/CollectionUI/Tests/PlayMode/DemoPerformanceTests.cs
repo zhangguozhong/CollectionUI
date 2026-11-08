@@ -16,7 +16,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator DirectionButtonPreservesDataMeasurementsAndScrollAcrossScenarios()
         {
-            var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/CollectionViewDemo.prefab"));
+            var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("CollectionViewDemo.prefab")));
             try
             {
                 yield return null;
@@ -97,7 +97,7 @@ namespace CollectionUI.Tests
         // 使用同一真实演示、相机和断言比较两个方向，避免只用空白 Cell 验证 RTL。
         IEnumerator ScrollAllScenarios(LayoutDirection direction)
         {
-            var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/CollectionViewDemo.prefab"));
+            var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("CollectionViewDemo.prefab")));
             var cameraObject = new GameObject("DemoBenchmarkCamera", typeof(Camera));
             var camera = cameraObject.GetComponent<Camera>();
             camera.orthographic = true;

@@ -58,6 +58,11 @@ flowchart TD
 
 程序集分为 Runtime、Samples、Editor、Tests。Runtime 仅依赖 Unity 引擎和 Unity.ugui；业务可以只保留运行时。Editor 的演示工具引用 Samples，不能仅删除 Samples 而保留依赖它的工具代码。
 
+组件目录同时是 UPM 包根目录，`package.json` 声明包名、版本、最低 Unity 版本和 UGUI 依赖。Git 安装通过子目录 URL 定位同一份源码，不维护重复的 UPM 分支或源码镜像。测试程序集仅在消费工程启用 testables 后参与测试。
+
+演示程序集和内置资源随包提供。`DemoAssetPaths` 根据程序集的 PackageInfo 区分 Assets 导入和 Packages 安装：资源读取使用 AssetDatabase 逻辑路径；UPM 下生成器只向 `Assets/CollectionUIDemos/Generated` 写入可编辑演示。布局生成规则和原有资源 GUID 不变。UPM 消费工程不提供源码包导出菜单，unitypackage 由源码工程统一导出。
+
+
 ## 3. 数据模型与身份
 
 ### 3.1 数据层级

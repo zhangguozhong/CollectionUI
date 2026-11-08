@@ -56,7 +56,7 @@ namespace CollectionUI.Tests
             view.RegisterTemplate("cell", template.GetComponent<CollectionCell>());
             events = new GameObject("Events", typeof(EventSystem));
             loader = root.AddComponent<CollectionLoader>();
-            var indicator = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/LoadingIndicator.prefab").GetComponent<RectTransform>();
+            var indicator = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("LoadingIndicator.prefab")).GetComponent<RectTransform>();
             loader.Configure(indicator, indicator);
             loader.PreloadEnabled = false;
             refreshes = loads = preloads = 0;

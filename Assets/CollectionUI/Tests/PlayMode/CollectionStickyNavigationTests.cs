@@ -309,7 +309,7 @@ namespace CollectionUI.Tests
         public IEnumerator NavigationDuringLoadingReleasesScrollHoldButKeepsRequest()
         {
             view.ApplySnapshot(Data());
-            var loadingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/Card.prefab").GetComponent<RectTransform>();
+            var loadingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("Card.prefab")).GetComponent<RectTransform>();
             var interaction = root.AddComponent<CollectionLoader>();
             interaction.Configure(loadingPrefab, loadingPrefab);
             long request = interaction.BeginRefresh();

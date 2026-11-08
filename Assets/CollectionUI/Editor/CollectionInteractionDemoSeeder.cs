@@ -11,9 +11,10 @@ namespace CollectionUI.Editor
     /// <summary>独立交互页面：所有尺寸从安全区分区派生，控件行负责同级间距与等分。</summary>
     public static class CollectionInteractionDemoSeeder
     {
-        public const string PrefabPath = CollectionViewDemoSeeder.Folder + "/InteractionDemo.prefab";
-        public const string LoadingPrefabPath = CollectionViewDemoSeeder.Folder + "/LoadingIndicator.prefab";
-        public const string ScenePath = CollectionViewDemoSeeder.Folder + "/InteractionDemo.unity";
+        public static string PrefabPath => CollectionViewDemoSeeder.Folder + "/InteractionDemo.prefab";
+        public static string LoadingPrefabPath => CollectionViewDemoSeeder.Folder + "/LoadingIndicator.prefab";
+        public static string ScenePath => CollectionViewDemoSeeder.Folder + "/InteractionDemo.unity";
+
         public const float TitleHeight = 60, StatisticsHeight = 64, RowHeight = 96, Gap = 12;
         public const float HeaderHeight = TitleHeight + StatisticsHeight + Gap + RowHeight + Gap + RowHeight + Gap;
         public const float FooterHeight = RowHeight, Inset = 24;

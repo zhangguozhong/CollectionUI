@@ -11,6 +11,8 @@ namespace CollectionUI.Tests
     /// <summary>交互演示的数据、资源隔离与父区布局契约。</summary>
     public class InteractionDemoContractTests
     {
+        [SetUp]
+        public void EnsureWritableDemo() => CollectionUI.Editor.CollectionInteractionDemoSeeder.Generate();
         [Test]
         public void HasMoreIsBusinessStateAndFeatureSwitchesRemainSerialized()
         {

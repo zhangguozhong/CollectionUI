@@ -1,0 +1,23 @@
+{
+  "name": "com.zhangguozhong.collectionui",
+  "version": "1.0.0",
+  "displayName": "Collection UI",
+  "description": "通用 Unity UGUI 集合视图：分组瀑布流、Flow 标签布局、虚拟化、差量更新、刷新加载和 RTL。",
+  "unity": "2022.3",
+  "dependencies": {
+    "com.unity.ugui": "1.0.0"
+  },
+  "keywords": [
+    "ui",
+    "collection",
+    "waterfall",
+    "flow",
+    "rtl"
+  ],
+  "author": {
+    "name": "zhangguozhong",
+    "url": "https://github.com/zhangguozhong"
+  },
+  "documentationUrl": "https://github.com/zhangguozhong/CollectionUI#readme",
+  "changelogUrl": "https://github.com/zhangguozhong/CollectionUI/releases"
+}

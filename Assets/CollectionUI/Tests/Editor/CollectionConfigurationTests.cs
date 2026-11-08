@@ -164,8 +164,8 @@ namespace CollectionUI.Tests
         {
             foreach (var path in new[]
             {
-                CollectionViewDemoSeeder.PrefabPath,
-                ExpandedCollectionDemoSeeder.PrefabPath
+                CollectionUI.Samples.DemoAssetPaths.Asset("CollectionViewDemo.prefab"),
+                CollectionUI.Samples.DemoAssetPaths.Asset("ExpandedCollectionDemo.prefab")
             }
 
             )

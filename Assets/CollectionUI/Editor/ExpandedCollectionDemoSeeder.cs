@@ -12,8 +12,9 @@ namespace CollectionUI.Editor
 {
     public static class ExpandedCollectionDemoSeeder
     {
-        public const string PrefabPath = CollectionViewDemoSeeder.Folder + "/ExpandedCollectionDemo.prefab";
-        public const string ScenePath = CollectionViewDemoSeeder.Folder + "/ExpandedCollectionDemo.unity";
+        public static string PrefabPath => CollectionViewDemoSeeder.Folder + "/ExpandedCollectionDemo.prefab";
+        public static string ScenePath => CollectionViewDemoSeeder.Folder + "/ExpandedCollectionDemo.unity";
+
         const float Inset = 24, TitleHeight = 60, StatsHeight = 68, ControlGap = 12, ControlHeight = 96, HeaderGap = 16;
         const float HeaderHeight = TitleHeight + StatsHeight + ControlGap + ControlHeight + HeaderGap;
         const float FooterHeight = 72, FooterInset = 16, FooterGap = 16;

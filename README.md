@@ -20,7 +20,31 @@ CollectionUI 用于在 Unity UGUI 中显示分组列表、瀑布流和自动换�
 
 [下载 CollectionUI.unitypackage](Builds/CollectionUI.unitypackage)，在 Unity 中通过 `Assets → Import Package → Custom Package` 导入。也可以克隆本仓库后，用 Unity 2022.3 打开仓库目录运行演示。
 
-导入 `CollectionUI.unitypackage`，或完整复制 `Assets/CollectionUI` 及其 `.meta` 文件。
+### 通过 GitHub + UPM 安装（推荐）
+
+先安装 Git，并确保 Unity 能找到 Git 命令。打开 `Window → Package Manager`，点击 `+ → Add package from git URL`，粘贴：
+
+```text
+https://github.com/zhangguozhong/CollectionUI.git?path=/Assets/CollectionUI#v1.0.0
+```
+
+也可以在工程 `Packages/manifest.json` 的 `dependencies` 中加入（保留已有依赖）：
+
+```json
+"com.zhangguozhong.collectionui": "https://github.com/zhangguozhong/CollectionUI.git?path=/Assets/CollectionUI#v1.0.0"
+```
+
+包会自动声明 UGUI 依赖。建议固定版本标签；升级时将 URL 中的标签改成新的已发布版本。卸载时在 Package Manager 选择 `Collection UI → Remove`，自行生成到 Assets 的演示副本会保留，可按需删除。
+
+**同一工程只选一种安装方式。** 从 `.unitypackage` 迁移到 UPM 前，先备份并保存业务修改，再移除旧 `Assets/CollectionUI`，避免重复程序集和 GUID。包内原有资源 GUID 保持不变；迁移后请检查业务场景和 Prefab 的引用。
+
+UPM 演示随包提供，可从 `Packages → Collection UI → Samples → Generated` 浏览。使用 `Tools → Collection UI` 打开或生成演示，会在 `Assets/CollectionUIDemos/Generated` 生成可编辑资源；不会写入只读包缓存。演示使用随包的 Samples 程序集，不需要额外导入另一份示例代码。
+
+需要运行包内回归测试时，在工程中安装 Unity Test Framework，并在 `Packages/manifest.json` 顶层的 `testables` 数组中加入 `com.zhangguozhong.collectionui`（保留已有条目），然后在 Test Runner 运行 EditMode / PlayMode。普通使用无需启用测试。
+
+### 通过 unitypackage 安装
+
+导入 `CollectionUI.unitypackage`，或完整复制 `Assets/CollectionUI` 及其 `.meta` 文件。源码仓库本身仍是可直接打开的 Unity 工程。
 
 仅使用运行时可以不导入示例、编辑器工具和测试；保留编辑器工具时应同时保留其引用的示例程序集。使用 asmdef 的业务程序集需要引用 `CollectionUI`。
 

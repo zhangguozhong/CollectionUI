@@ -8,7 +8,10 @@ namespace CollectionUI.Tests
 {
     public class ExpandedDemoContractTests
     {
-        public const string PrefabPath = "Assets/CollectionUI/Samples/Generated/ExpandedCollectionDemo.prefab";
+        [SetUp]
+        public void EnsureWritableDemo() => CollectionUI.Editor.ExpandedCollectionDemoSeeder.Generate();
+        public static string PrefabPath => CollectionUI.Samples.DemoAssetPaths.Asset("ExpandedCollectionDemo.prefab");
+
         [Test]
         public void ExpandedSeederIsIdempotent()
         {

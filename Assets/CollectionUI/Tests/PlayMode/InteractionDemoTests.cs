@@ -17,7 +17,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator ButtonsKeepLoadingUntilCompletionAndApplyChanges()
         {
-            root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/InteractionDemo.prefab"));
+            root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("InteractionDemo.prefab")));
             root.GetComponent<CanvasScaler>().enabled = false;
             root.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
             root.GetComponentInChildren<DemoSafeArea>().enabled = false;
@@ -58,7 +58,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator RefreshCompletionInRealDemoKeepsThePullForSmoothReturn()
         {
-            root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/InteractionDemo.prefab"));
+            root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("InteractionDemo.prefab")));
             root.GetComponent<CanvasScaler>().enabled = false;
             root.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
             root.GetComponentInChildren<DemoSafeArea>().enabled = false;

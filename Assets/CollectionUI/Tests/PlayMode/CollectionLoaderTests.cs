@@ -40,7 +40,7 @@ namespace CollectionUI.Tests
             template.SetActive(false);
             view.RegisterTemplate("cell", template.GetComponent<CollectionCell>());
             view.ApplySnapshot(Data(30));
-            loadingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/Card.prefab").GetComponent<RectTransform>();
+            loadingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CollectionUI.Samples.DemoAssetPaths.Asset("Card.prefab")).GetComponent<RectTransform>();
             interaction = root.AddComponent<CollectionLoader>();
             interaction.Configure(loadingPrefab, loadingPrefab);
             events = new GameObject("Events", typeof(EventSystem));
