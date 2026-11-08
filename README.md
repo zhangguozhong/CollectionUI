@@ -2,6 +2,8 @@
 
 CollectionUI 用于在 Unity UGUI 中显示分组列表、瀑布流和自动换行标签。适用于 Unity 2022.3 / UGUI 1.0，支持普通节点展开和 ScrollRect 滚动。
 
+推荐使用 **GitHub + UPM** 安装，当前稳定版本为 **v1.0.0**。安装地址、升级方式及旧版迁移说明见 [导入与演示](#1-导入与演示)。
+
 本文只说明如何使用。内部实现见 [设计文档](Assets/CollectionUI/DESIGN.md)。示例中的业务模型、尺寸提供者及请求处理方法由使用方实现。
 
 ## 目录
@@ -18,11 +20,13 @@ CollectionUI 用于在 Unity UGUI 中显示分组列表、瀑布流和自动换�
 
 ## 1. 导入与演示
 
-[下载 CollectionUI.unitypackage](Builds/CollectionUI.unitypackage)，在 Unity 中通过 `Assets → Import Package → Custom Package` 导入。也可以克隆本仓库后，用 Unity 2022.3 打开仓库目录运行演示。
-
 ### 通过 GitHub + UPM 安装（推荐）
 
-先安装 Git，并确保 Unity 能找到 Git 命令。打开 `Window → Package Manager`，点击 `+ → Add package from git URL`，粘贴：
+先安装 Git，并确保 Unity 能找到 Git 命令。
+
+1. 打开 `Window → Package Manager`。
+2. 点击左上角 `+ → Add package from git URL`。
+3. 粘贴下面的地址并点击 `Add`：
 
 ```text
 https://github.com/zhangguozhong/CollectionUI.git?path=/Assets/CollectionUI#v1.0.0
@@ -43,6 +47,8 @@ UPM 演示随包提供，可从 `Packages → Collection UI → Samples → Gene
 需要运行包内回归测试时，在工程中安装 Unity Test Framework，并在 `Packages/manifest.json` 顶层的 `testables` 数组中加入 `com.zhangguozhong.collectionui`（保留已有条目），然后在 Test Runner 运行 EditMode / PlayMode。普通使用无需启用测试。
 
 ### 通过 unitypackage 安装
+
+[下载 CollectionUI.unitypackage](Builds/CollectionUI.unitypackage)，在 Unity 中通过 `Assets → Import Package → Custom Package` 导入。也可以克隆本仓库后，用 Unity 2022.3 打开仓库目录运行演示。
 
 导入 `CollectionUI.unitypackage`，或完整复制 `Assets/CollectionUI` 及其 `.meta` 文件。源码仓库本身仍是可直接打开的 Unity 工程。
 

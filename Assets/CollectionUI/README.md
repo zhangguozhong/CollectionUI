@@ -2,6 +2,8 @@
 
 CollectionUI 用于在 Unity UGUI 中显示分组列表、瀑布流和自动换行标签。适用于 Unity 2022.3 / UGUI 1.0，支持普通节点展开和 ScrollRect 滚动。
 
+推荐使用 **GitHub + UPM** 安装，当前稳定版本为 **v1.0.0**。安装地址、升级方式及旧版迁移说明见 [导入与演示](#1-导入与演示)。
+
 本文只说明如何使用。内部实现见 [设计文档](DESIGN.md)。示例中的业务模型、尺寸提供者及请求处理方法由使用方实现。
 
 ## 目录
@@ -20,7 +22,11 @@ CollectionUI 用于在 Unity UGUI 中显示分组列表、瀑布流和自动换�
 
 ### 通过 GitHub + UPM 安装（推荐）
 
-先安装 Git，并确保 Unity 能找到 Git 命令。打开 `Window → Package Manager`，点击 `+ → Add package from git URL`，粘贴：
+先安装 Git，并确保 Unity 能找到 Git 命令。
+
+1. 打开 `Window → Package Manager`。
+2. 点击左上角 `+ → Add package from git URL`。
+3. 粘贴下面的地址并点击 `Add`：
 
 ```text
 https://github.com/zhangguozhong/CollectionUI.git?path=/Assets/CollectionUI#v1.0.0
