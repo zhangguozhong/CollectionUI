@@ -20,7 +20,8 @@ namespace CollectionUI.Tests
         protected override void OnUnbind() => DisplayedContent = null;
     }
 
-    // 同一组真实手势与提交时序覆盖三种 RTL 几何策略，不依赖 Query 生成可见项预期。
+    // 六种组合时序分别覆盖 Columns、Flow、Skyline，共 18 项正式回归。
+    // 使用真实拖动事件，并以全量布局和可见矩形独立校验增量结果，不依赖 Query 生成预期。
     [TestFixture(LayoutMode.Columns)]
     [TestFixture(LayoutMode.Flow)]
     [TestFixture(LayoutMode.Skyline)]
@@ -193,6 +194,7 @@ namespace CollectionUI.Tests
                 {
                     float before = Offset;
                     view.ApplyChanges(new CollectionChangeSet().InsertItem("s1", 5000 + added, Item("tail" + added++)));
+                    Assert.AreEqual(mode != LayoutMode.Skyline, view.Layout.IsIncrementalAppend);
                     Assert.That(Offset, Is.EqualTo(before).Within(.02f));
                     SwitchDirection();
                     Drag(p, 0);
@@ -219,6 +221,7 @@ namespace CollectionUI.Tests
         [UnityTest]
         public IEnumerator MixedDeltaChangesDuringDragKeepAnchorAndReusedPositions()
         {
+            AppendPage(60, 20, "warm-mixed");
             view.ScrollToItem("i35");
             var p = Begin();
             Drag(p, 12);
@@ -375,6 +378,99 @@ namespace CollectionUI.Tests
             Assert.IsFalse(loader.HasMore);
             yield return null;
             AssertPresentation();
+        }
+
+        // 普通分页必须命中增量路径；Skyline 使用通用路径。两者都应保留锚点、惯性和已有绑定。
+        void AppendPage(int start, int count, string prefix)
+        {
+            var cells = scroll.content.GetComponentsInChildren<RtlInteractionCell>();
+            var versions = cells.ToDictionary(c => c.ItemId, c => c.BindingVersion);
+            var changes = new CollectionChangeSet();
+            for (int i = 0; i < count; i++)
+                changes.InsertItem("s1", start + i, Item(prefix + i));
+            float offset = Offset;
+            var velocity = scroll.velocity;
+            view.ApplyChanges(changes);
+            Assert.AreEqual(mode != LayoutMode.Skyline, view.Layout.IsIncrementalAppend);
+            Assert.That(Offset, Is.EqualTo(offset).Within(.02f));
+            Assert.AreEqual(velocity, scroll.velocity);
+            foreach (var c in cells)
+                if (c != null && c.IsBound && versions.TryGetValue(c.ItemId, out var version))
+                    Assert.AreEqual(version, c.BindingVersion);
+            AssertMatchesFullLayout();
+            AssertPresentation();
+        }
+
+        [UnityTest]
+        public IEnumerator RepeatedPagesRefreshReplacementMixedChangesAndReloadKeepStateConsistent()
+        {
+            // 先建立多页增量索引，再用刷新替换数据，验证旧索引和请求状态不会泄漏。
+            for (int i = 0; i < 10; i++)
+                AppendPage(60 + i * 20, 20, "warm" + i + "-");
+            view.ScrollToItem("i0");
+            var p = Begin();
+            Drag(p, -600);
+            End(p);
+            Assert.AreEqual(1, refreshes);
+            long refresh = loader.ActiveRequestId;
+            yield return new WaitForSecondsRealtime(.4f);
+            float held = Offset;
+            view.ApplySnapshot(Data(120));
+            Assert.IsFalse(view.Layout.IsIncrementalAppend);
+            Assert.That(Offset, Is.EqualTo(held).Within(.02f));
+            SwitchDirection();
+            Assert.AreEqual(refresh, loader.ActiveRequestId);
+            Assert.AreEqual(0, loader.BeginLoadMore());
+            Assert.IsTrue(loader.CompleteRefresh(refresh));
+            Assert.IsFalse(loader.CompleteRefresh(refresh));
+            for (int i = 0; i < 20; i++)
+            {
+                yield return null;
+                AssertPresentation();
+            }
+
+            // 刷新后继续分页，穿插更新、移动、删除，再切换方向恢复分页。
+            AppendPage(60, 50, "after-refresh");
+            view.ApplyChanges(new CollectionChangeSet().UpdateItem("i70", Item("i70", 100, 180)).MoveItem("i65", "s1", 5).RemoveItem("after-refresh0"));
+            Assert.IsFalse(view.Layout.IsIncrementalAppend);
+            AssertMatchesFullLayout();
+            AssertPresentation();
+            SwitchDirection();
+            AppendPage(109, 20, "after-mixed");
+            view.ScrollToItem("after-mixed19", 1);
+            p = Begin();
+            Drag(p, 600);
+            End(p);
+            Assert.AreEqual(1, loads);
+            long load = loader.ActiveRequestId;
+            yield return new WaitForSecondsRealtime(.4f);
+            SwitchDirection();
+            p = Begin();
+            Drag(p, 0);
+            // 加载期间重新抓住列表，数据到达和完成请求都不能破坏手势基准。
+            AppendPage(129, 50, "load");
+            Assert.AreEqual(load, loader.ActiveRequestId);
+            Assert.AreEqual(0, loader.BeginLoadMore());
+            Assert.IsFalse(loader.CompleteRefresh(refresh));
+            Assert.IsTrue(loader.CompleteLoadMore(load, false));
+            float offset = Offset;
+            Drag(p, 0);
+            Assert.That(Offset, Is.EqualTo(offset).Within(.05f));
+            End(p);
+            // 没有更多数据后，新手势也不能再触发预加载或上拉加载。
+            loader.PreloadEnabled = true;
+            view.ScrollToItem("load49", 1);
+            p = Begin();
+            Drag(p, 600);
+            End(p);
+            Assert.AreEqual(1, loads);
+            Assert.AreEqual(0, preloads);
+            Assert.IsFalse(loader.HasMore);
+            for (int i = 0; i < 20; i++)
+            {
+                yield return null;
+                AssertPresentation();
+            }
         }
 
         [UnityTearDown]

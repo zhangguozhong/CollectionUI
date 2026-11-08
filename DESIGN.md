@@ -429,6 +429,7 @@ Profiler 的 ApplySnapshot/ApplyChanges 标记覆盖同步提交路径，BuildLa
 - 生命周期：保留绑定、取消令牌、组件单独销毁、吸顶回调重入。
 - 连续交互：拖动插入、惯性追加、顶部/底部越界、缩放、重新抓住 loading、完成同帧追加。
 - 请求：同步完成、错误/过期 ID、双层预加载限制、禁用、HasMore、资源实例复用。
+- 组合时序：`RightToLeftInteractionTests` 的六种流程分别覆盖 Columns、Flow、Skyline，共 18 项；包含连续分页后刷新替换、混合差量、RTL 切换和再次加载，并校验锚点、惯性、绑定、完整布局一致性与请求互斥。
 - 演示：两种展示模式、三种交互截图分辨率、安全区、万条数据基准。
 
 可在 Unity Test Runner 中运行 EditMode 和 PlayMode 的 CollectionUI 测试。静态图用于检查布局，多帧断言用于检查位置及绑定连续性；目标设备的触摸体验、帧耗时与内存分配需结合实际业务使用 Profiler 验证。
