@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using UnityEngine;
 
@@ -48,15 +50,38 @@ namespace CollectionUI
             // 先使绑定失效，再取消任务；取消回调即使同步执行也会观察到失效状态。
             IsBound = false;
             BindingVersion++;
-            if (cancellation != null)
+            Exception failure = null;
+            var previousCancellation = cancellation;
+            cancellation = null;
+            try
             {
-                cancellation.Cancel();
-                cancellation.Dispose();
-                cancellation = null;
+                previousCancellation?.Cancel();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                previousCancellation?.Dispose();
             }
 
-            OnUnbind();
-            ItemId = null;
+            try
+            {
+                OnUnbind();
+            }
+            catch (Exception exception)
+            {
+                if (failure == null)
+                    failure = exception;
+            }
+            finally
+            {
+                ItemId = null;
+            }
+
+            if (failure != null)
+                ExceptionDispatchInfo.Capture(failure).Throw();
         }
 
         /// <summary>在绑定状态和世代更新后调用；派生类在此刷新内容或发起异步加载。</summary>
@@ -65,7 +90,7 @@ namespace CollectionUI
         }
 
         internal void UpdateLayout(LayoutEntry entry) => OnLayoutUpdated(entry);
-        /// <summary>绑定内容未变但布局重新提交时调用；刷新索引相关显示，不取消当前异步任务或递增绑定世代。</summary>
+        /// <summary>绑定内容未变但矩形、索引或所属分区改变时调用；刷新索引相关显示，不取消当前异步任务或递增绑定世代。</summary>
         protected virtual void OnLayoutUpdated(LayoutEntry entry)
         {
         }

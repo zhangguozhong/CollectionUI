@@ -99,6 +99,7 @@ namespace CollectionUI
             if (eventData == null || activeDrag == null || activeDrag.pointerId != eventData.pointerId)
                 return;
             activeDrag = eventData;
+            CancelSectionNavigation();
             if (!elasticDragStartPending)
                 return;
             elasticDragStartPending = false;

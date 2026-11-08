@@ -12,12 +12,16 @@ namespace CollectionUI
             internal CollectionSection Metadata;
             internal int FirstEntry, Count;
             internal float Start, Height;
+            // 续排状态只读发布；下一次追加必须复制列高数组，不能修改旧结果。
+            internal float[] ColumnHeights;
+            internal float RowY, RowHeight, NextX, ItemBottom;
         }
 
         internal readonly Dictionary<string, SectionGeometry> Sections;
         readonly List<LayoutEntry> entries;
         readonly Dictionary<string, int> byKey;
         readonly Dictionary<string, LayoutEntry> byItem;
+        readonly Dictionary<string, List<int>> supplementaryById = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         readonly int[] sorted;
         readonly float[] maxBottom;
         /// <summary>按构建顺序保存的只读元素列表；可见性查询返回此列表中的索引。</summary>
@@ -51,6 +55,12 @@ namespace CollectionUI
                 byKey.Add(source[i].Key, i);
                 if (source[i].Kind == ElementKind.Item)
                     byItem.Add(source[i].Item.Id, source[i]);
+                else
+                {
+                    if (!supplementaryById.TryGetValue(source[i].Item.Id, out var indices))
+                        supplementaryById.Add(source[i].Item.Id, indices = new List<int>());
+                    indices.Add(i);
+                }
             }
 
             // 列布局及流式布局通常已按顶部排序；实际顺序有回退时才支付排序成本。
@@ -135,6 +145,17 @@ namespace CollectionUI
             return true;
         }
 
+        // 普通项与分组头尾可以共享业务 ID；局部刷新必须覆盖全部匹配身份。
+        internal void AddIndicesForId(string id, List<int> results)
+        {
+            if (id == null)
+                return;
+            if (byItem.TryGetValue(id, out var item))
+                results.Add(byKey[item.Key]);
+            if (supplementaryById.TryGetValue(id, out var indices))
+                results.AddRange(indices);
+        }
+
         // 可见单元格协调复用结果内已有索引，避免每次提交重新遍历构建字典。
         internal bool TryGetIndex(string key, out int index)
         {
@@ -161,7 +182,7 @@ namespace CollectionUI
 
         /// <summary>同时传入历史结果和非空引用的脏分区集合，可复用元数据等价的分区；空集合启用自动比较，
         /// null 则强制全部重算，宽度变化也会使全部分区重算。业务 Data 的变化影响测量时，
-        /// 必须递增条目 Version 或将分区标记为脏。每次调用仍会重建元素副本和可见性索引。</summary>
+        /// 必须递增条目 Version 或将分区标记为脏。列布局和流式布局的纯尾部追加可续排；每次调用仍会验证数据并重建可见性索引。</summary>
         public static LayoutResult Build(CollectionSnapshot snapshot, float viewportWidth, Func<CollectionItem, float, Vector2> measure = null, LayoutResult previous = null, ISet<string> dirtySections = null)
         {
             if (snapshot == null)
@@ -198,7 +219,9 @@ namespace CollectionUI
                 previousSectionSpacing = settings.SectionSpacing;
                 float sectionStart = y;
                 int firstEntry = entries.Count;
-                if (canReuse && !dirtySections.Contains(section.Id) && previous.Sections.TryGetValue(section.Id, out var old) && Equivalent(section, old.Metadata))
+                LayoutResult.SectionGeometry old = null;
+                bool reusable = canReuse && !dirtySections.Contains(section.Id) && previous.Sections.TryGetValue(section.Id, out old);
+                if (reusable && Equivalent(section, old.Metadata))
                 {
                     // 前面分区的高度可能改变：复用内部几何，只整体平移，并绑定本次快照中的元数据。
                     float delta = sectionStart - old.Start;
@@ -206,20 +229,50 @@ namespace CollectionUI
                     {
                         var entry = previous.Entries[i];
                         var item = entry.Kind == ElementKind.Header ? section.Header : entry.Kind == ElementKind.Footer ? section.Footer : section.Items[entry.ItemIndex];
-                        Add(entries, section, si, item, entry.ItemIndex, entry.Kind, entry.Rect.x, entry.Rect.y + delta, new Vector2(entry.Rect.width, entry.Rect.height));
+                        AddReused(entries, section, si, item, entry, delta);
                     }
 
                     y = sectionStart + old.Height;
                     NonNegative(y, "Content height");
-                    sectionGeometry.Add(section.Id, new LayoutResult.SectionGeometry { Metadata = section, FirstEntry = firstEntry, Count = entries.Count - firstEntry, Start = sectionStart, Height = old.Height });
+                    var retainedGeometry = new LayoutResult.SectionGeometry
+                    {
+                        Metadata = section,
+                        FirstEntry = firstEntry,
+                        Count = entries.Count - firstEntry,
+                        Start = sectionStart,
+                        Height = old.Height
+                    };
+                    CopyContinuation(old, retainedGeometry, delta);
+                    sectionGeometry.Add(section.Id, retainedGeometry);
                     reused++;
                     continue;
                 }
 
                 recomputed++;
+                var geometry = new LayoutResult.SectionGeometry
+                {
+                    Metadata = section,
+                    FirstEntry = firstEntry,
+                    Start = sectionStart
+                };
+                bool append = reusable && old.Start == sectionStart && CanAppend(section, old);
+                int itemStart = append ? old.Metadata.Items.Count : 0;
+                if (append)
+                {
+                    // 头部与原条目的矩形不变；页脚必须移到新增内容之后。
+                    for (int i = old.FirstEntry; i < old.FirstEntry + old.Count; i++)
+                    {
+                        var entry = previous.Entries[i];
+                        if (entry.Kind == ElementKind.Footer)
+                            continue;
+                        var item = entry.Kind == ElementKind.Header ? section.Header : section.Items[entry.ItemIndex];
+                        AddReused(entries, section, si, item, entry, 0);
+                    }
+                }
+
                 y += settings.Insets.Top;
                 bool hasBlock = false;
-                if (section.Header != null)
+                if (!append && section.Header != null)
                 {
                     var size = Resolve(section.Header, available, measure);
                     Add(entries, section, si, section.Header, -1, ElementKind.Header, settings.Insets.Left, y, size);
@@ -231,16 +284,18 @@ namespace CollectionUI
                 {
                     if (hasBlock)
                         y += settings.VerticalSpacing;
-                    float bottom = y;
+                    float bottom = append ? old.ItemBottom : y;
                     if (settings.Mode == LayoutMode.Columns)
                     {
                         float width = (available - (settings.ColumnCount - 1) * settings.HorizontalSpacing) / settings.ColumnCount;
                         Positive(width, "Column width");
                         // 每个条目放入当前最短列；等高时保留最左列，保证相同输入得到稳定结果。
-                        var heights = new float[settings.ColumnCount];
-                        for (int i = 0; i < heights.Length; i++)
-                            heights[i] = y;
-                        for (int i = 0; i < section.Items.Count; i++)
+                        var heights = append ? (float[])old.ColumnHeights.Clone() : new float[settings.ColumnCount];
+                        if (!append)
+                            for (int i = 0; i < heights.Length; i++)
+                                heights[i] = y;
+                        geometry.ColumnHeights = heights;
+                        for (int i = itemStart; i < section.Items.Count; i++)
                         {
                             int column = 0;
                             for (int c = 1; c < heights.Length; c++)
@@ -256,9 +311,9 @@ namespace CollectionUI
                     else if (settings.Mode == LayoutMode.Flow)
                     {
                         // 按输入顺序从左向右排列；当前行最高元素决定下一行顶部，超宽时整项换行。
-                        float rowY = y, rowHeight = 0, nextX = 0;
-                        bool hasRowItem = false;
-                        for (int i = 0; i < section.Items.Count; i++)
+                        float rowY = append ? old.RowY : y, rowHeight = append ? old.RowHeight : 0, nextX = append ? old.NextX : 0;
+                        bool hasRowItem = append;
+                        for (int i = itemStart; i < section.Items.Count; i++)
                         {
                             var size = Resolve(section.Items[i], available, measure);
                             float x = hasRowItem ? nextX + settings.HorizontalSpacing : 0;
@@ -275,6 +330,10 @@ namespace CollectionUI
                             nextX = x + size.x;
                             hasRowItem = true;
                         }
+
+                        geometry.RowY = rowY;
+                        geometry.RowHeight = rowHeight;
+                        geometry.NextX = nextX;
                     }
                     else
                     {
@@ -348,6 +407,7 @@ namespace CollectionUI
                         }
                     }
 
+                    geometry.ItemBottom = bottom;
                     y = bottom;
                     hasBlock = true;
                 }
@@ -363,7 +423,9 @@ namespace CollectionUI
 
                 y += settings.Insets.Bottom;
                 NonNegative(y, "Content height");
-                sectionGeometry.Add(section.Id, new LayoutResult.SectionGeometry { Metadata = section, FirstEntry = firstEntry, Count = entries.Count - firstEntry, Start = sectionStart, Height = y - sectionStart });
+                geometry.Count = entries.Count - firstEntry;
+                geometry.Height = y - sectionStart;
+                sectionGeometry.Add(section.Id, geometry);
             }
 
             return new LayoutResult(entries, viewportWidth, y, sectionGeometry)
@@ -373,16 +435,50 @@ namespace CollectionUI
             };
         }
 
-        static bool Equivalent(CollectionSection a, CollectionSection b)
+        static bool Equivalent(CollectionSection a, CollectionSection b, bool prefix = false)
         {
             var x = a.Layout;
             var y = b.Layout;
-            if (x.Mode != y.Mode || x.ColumnCount != y.ColumnCount || x.HorizontalSpacing != y.HorizontalSpacing || x.VerticalSpacing != y.VerticalSpacing || x.SectionSpacing != y.SectionSpacing || x.ShowEmptySection != y.ShowEmptySection || x.Insets.Left != y.Insets.Left || x.Insets.Top != y.Insets.Top || x.Insets.Right != y.Insets.Right || x.Insets.Bottom != y.Insets.Bottom || a.Items.Count != b.Items.Count || !Equivalent(a.Header, b.Header) || !Equivalent(a.Footer, b.Footer))
+            if (x.Mode != y.Mode || x.ColumnCount != y.ColumnCount || x.HorizontalSpacing != y.HorizontalSpacing || x.VerticalSpacing != y.VerticalSpacing || x.SectionSpacing != y.SectionSpacing || x.ShowEmptySection != y.ShowEmptySection || x.Insets.Left != y.Insets.Left || x.Insets.Top != y.Insets.Top || x.Insets.Right != y.Insets.Right || x.Insets.Bottom != y.Insets.Bottom || (!prefix && a.Items.Count != b.Items.Count) || !Equivalent(a.Header, b.Header) || !Equivalent(a.Footer, b.Footer))
                 return false;
-            for (int i = 0; i < a.Items.Count; i++)
+            for (int i = 0; i < b.Items.Count; i++)
                 if (!Equivalent(a.Items[i], b.Items[i]))
                     return false;
             return true;
+        }
+
+        static bool CanAppend(CollectionSection section, LayoutResult.SectionGeometry old)
+        {
+            if (section.Layout.Mode == LayoutMode.Skyline || old.Metadata.Items.Count == 0 || section.Items.Count <= old.Metadata.Items.Count)
+                return false;
+            return Equivalent(section, old.Metadata, true);
+        }
+
+        static void CopyContinuation(LayoutResult.SectionGeometry old, LayoutResult.SectionGeometry next, float delta)
+        {
+            if (old.ColumnHeights != null)
+            {
+                next.ColumnHeights = (float[])old.ColumnHeights.Clone();
+                for (int i = 0; i < next.ColumnHeights.Length; i++)
+                    next.ColumnHeights[i] += delta;
+            }
+
+            next.RowY = old.RowY + delta;
+            next.RowHeight = old.RowHeight;
+            next.NextX = old.NextX;
+            next.ItemBottom = old.ItemBottom + delta;
+        }
+
+        static void AddReused(List<LayoutEntry> entries, CollectionSection section, int si, CollectionItem item, LayoutEntry old, float delta)
+        {
+            // 元数据和 Data 引用完全相同且没有平移时，可共享已经冻结的条目；否则创建本次结果的副本。
+            if (delta == 0 && si == old.SectionIndex && ReferenceEquals(item.Data, old.Item.Data) && Equivalent(item, old.Item))
+            {
+                item.Freeze();
+                entries.Add(old);
+            }
+            else
+                Add(entries, section, si, item, old.ItemIndex, old.Kind, old.Rect.x, old.Rect.y + delta, old.Rect.size);
         }
 
         // 不比较调用方拥有的 Data 内部状态；尺寸变化需通过版本或脏分区显式通知。

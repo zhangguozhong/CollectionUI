@@ -54,6 +54,8 @@ namespace CollectionUI
         readonly HashSet<int> pendingLayouts = new HashSet<int>();
         readonly List<int> query = new List<int>();
         readonly List<int> removals = new List<int>();
+        readonly List<MonoBehaviour> layoutControllers = new List<MonoBehaviour>();
+        readonly List<RectTransform> ancestorLayoutRoots = new List<RectTransform>();
         readonly HashSet<int> wanted = new HashSet<int>();
         Dictionary<string, long> presentationRevisions = new Dictionary<string, long>(StringComparer.Ordinal);
         long presentationRevision;
@@ -349,7 +351,7 @@ namespace CollectionUI
             try
             {
                 EnsureInitialized();
-                Canvas.ForceUpdateCanvases();
+                UpdateAncestorLayout();
                 float width = AvailableWidth;
                 if (width <= 0)
                     throw new InvalidOperationException("Collection viewport must have positive width before applying data.");
@@ -455,6 +457,39 @@ namespace CollectionUI
             return result;
         }
 
+        // 从实际宽度来源逐层同步相关控制器，避免全场景 Canvas 更新。
+        void UpdateAncestorLayout()
+        {
+            ancestorLayoutRoots.Clear();
+            var widthSource = expanded ? content : scroll.viewport;
+            for (var parent = (Transform)widthSource; parent != null; parent = parent.parent)
+            {
+                parent.GetComponents(layoutControllers);
+                foreach (var component in layoutControllers)
+                    if (component is ILayoutController && component.isActiveAndEnabled && ControlsLayout(component) && parent is RectTransform rect)
+                    {
+                        ancestorLayoutRoots.Add(rect);
+                        break;
+                    }
+            }
+
+            layoutControllers.Clear();
+            // 计算首选尺寸与分配尺寸采用不同的 UGUI 递归条件，不能只重建最高节点。
+            // 从外到内逐个同步，覆盖普通节点或仅控制自身尺寸的组件隔开的内层布局。
+            for (int i = ancestorLayoutRoots.Count - 1; i >= 0; i--)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(ancestorLayoutRoots[i]);
+            ancestorLayoutRoots.Clear();
+            widthSource.ForceUpdateRectTransforms();
+        }
+
+        static bool ControlsLayout(MonoBehaviour component)
+        {
+            if (!(component is ScrollRect rectangle))
+                return true;
+            // 普通 ScrollRect 不分配视口尺寸；自动扩展滚动条会改变视口宽高，必须先同步。
+            return (rectangle.verticalScrollbar != null && rectangle.verticalScrollbarVisibility == ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport) || (rectangle.horizontalScrollbar != null && rectangle.horizontalScrollbarVisibility == ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport);
+        }
+
         SizeKey MeasurementKey(CollectionItem item, float width) => new SizeKey
         {
             Id = item.LayoutKey,
@@ -513,14 +548,37 @@ namespace CollectionUI
             try
             {
                 var dirty = new HashSet<string>(ids);
-                // 吸顶副本可能仍显示已离开普通可见区的页眉；按布局键通知全部匹配元素。
+                // 按 ID 索引找到普通条目及同名分组头尾，吸顶副本也能收到离屏页眉的修订。
                 long revision = ++presentationRevision;
-                foreach (var entry in Layout.Entries)
-                    if (dirty.Contains(entry.Item.Id))
-                        presentationRevisions[entry.Key] = revision;
-                foreach (var pair in active)
-                    if (dirty.Contains(Layout.Entries[pair.Key].Item.Id))
-                        pair.Value.Bind(Layout.Entries[pair.Key]);
+                var indices = new List<int>();
+                foreach (var id in dirty)
+                    Layout.AddIndicesForId(id, indices);
+                foreach (int index in indices)
+                {
+                    var entry = Layout.Entries[index];
+                    presentationRevisions[entry.Key] = revision;
+                    if (active.ContainsKey(index))
+                        pendingBindings.Add(index);
+                }
+
+                foreach (int index in indices)
+                {
+                    if (!active.TryGetValue(index, out var cell))
+                        continue;
+                    try
+                    {
+                        cell.Bind(Layout.Entries[index]);
+                        pendingBindings.Remove(index);
+                    }
+                    catch
+                    {
+                        active.Remove(index);
+                        DiscardFailedCell(cell);
+                        hasRefreshedRegion = false;
+                        expandedDirty = true;
+                        throw;
+                    }
+                }
             }
             finally
             {
@@ -653,6 +711,7 @@ namespace CollectionUI
         void SetOffset(float y)
         {
             scroll.content.anchoredPosition = new Vector2(0, Mathf.Clamp(y, 0, Mathf.Max(0, Layout.ContentHeight - scroll.viewport.rect.height)));
+            RebaseScrollAfterLayout(Vector2.zero);
         }
 
         /// <summary>滚动到指定业务项；alignment 为 0 时靠顶部、1 时靠底部。Expanded 无滚动位置，此调用不做操作。</summary>
@@ -712,6 +771,9 @@ namespace CollectionUI
             Rect region = expanded ? default : new Rect(0, content.anchoredPosition.y - overscan, layoutWidth, scroll.viewport.rect.height + overscan * 2);
             if (!expanded && !expandedDirty && pendingBindings.Count == 0 && pendingLayouts.Count == 0 && hasRefreshedRegion && ReferenceEquals(refreshedLayout, Layout) && refreshedRegion == region)
                 return;
+            // 只有完整刷新成功才缓存区域；回调异常后同一区域仍需重试。
+            hasRefreshedRegion = false;
+            expandedDirty = true;
             refreshing = true;
             VisibleRefreshCount++;
             long start = Stopwatch.GetTimestamp();
@@ -742,10 +804,11 @@ namespace CollectionUI
                     for (int i = 0; i < removals.Count; i++)
                     {
                         int index = removals[i];
-                        Return(active[index], Layout.Entries[index].Item.ReuseIdentifier);
+                        var removed = active[index];
                         active.Remove(index);
                         pendingBindings.Remove(index);
                         pendingLayouts.Remove(index);
+                        Return(removed, Layout.Entries[index].Item.ReuseIdentifier);
                     }
 
                     for (int i = 0; i < query.Count; i++)
@@ -754,23 +817,46 @@ namespace CollectionUI
                         var entry = Layout.Entries[index];
                         if (active.TryGetValue(index, out var existing))
                         {
-                            if (pendingLayouts.Remove(index))
+                            bool layoutPending = pendingLayouts.Contains(index);
+                            bool bindingPending = pendingBindings.Contains(index);
+                            try
                             {
-                                SetCellFrame(existing, entry);
-                                if (pendingBindings.Remove(index))
+                                if (layoutPending)
+                                    SetCellFrame(existing, entry);
+                                if (bindingPending)
                                     existing.Bind(entry);
-                                else
+                                else if (layoutPending)
                                     existing.UpdateLayout(entry);
+                                pendingLayouts.Remove(index);
+                                pendingBindings.Remove(index);
+                            }
+                            catch
+                            {
+                                active.Remove(index);
+                                hasRefreshedRegion = false;
+                                expandedDirty = true;
+                                DiscardFailedCell(existing);
+                                throw;
                             }
 
                             continue;
                         }
 
                         var cell = Take(entry.Item.ReuseIdentifier);
-                        SetCellFrame(cell, entry);
-                        active.Add(index, cell);
-                        cell.Bind(entry);
-                        cell.gameObject.SetActive(true);
+                        try
+                        {
+                            SetCellFrame(cell, entry);
+                            cell.Bind(entry);
+                            cell.gameObject.SetActive(true);
+                            active.Add(index, cell);
+                            pendingLayouts.Remove(index);
+                            pendingBindings.Remove(index);
+                        }
+                        catch
+                        {
+                            DiscardFailedCell(cell);
+                            throw;
+                        }
                     }
 
                     expandedDirty = false;
@@ -827,17 +913,35 @@ namespace CollectionUI
 
             var retained = new Dictionary<int, CollectionCell>();
             var bindings = new HashSet<int>();
-            foreach (var pair in active)
+            var layouts = new HashSet<int>();
+            foreach (var pair in new List<KeyValuePair<int, CollectionCell>>(active))
             {
                 var old = Layout.Entries[pair.Key];
                 if (next.TryGetIndex(old.Key, out int index) && next.Entries[index].Item.ReuseIdentifier == old.Item.ReuseIdentifier)
                 {
                     retained.Add(index, pair.Value);
+                    var entry = next.Entries[index];
+                    if (pendingLayouts.Contains(pair.Key) || old.Rect != entry.Rect || old.SectionIndex != entry.SectionIndex || old.ItemIndex != entry.ItemIndex || old.Kind != entry.Kind || old.SectionId != entry.SectionId)
+                        layouts.Add(index);
                     if (pendingBindings.Contains(pair.Key) || RequiresBinding(old, next.Entries[index], forced))
                         bindings.Add(index);
                 }
                 else
-                    Return(pair.Value, old.Item.ReuseIdentifier);
+                {
+                    active.Remove(pair.Key);
+                    pendingBindings.Remove(pair.Key);
+                    pendingLayouts.Remove(pair.Key);
+                    try
+                    {
+                        Return(pair.Value, old.Item.ReuseIdentifier);
+                    }
+                    catch
+                    {
+                        hasRefreshedRegion = false;
+                        expandedDirty = true;
+                        throw;
+                    }
+                }
             }
 
             active.Clear();
@@ -846,9 +950,9 @@ namespace CollectionUI
             foreach (var pair in retained)
             {
                 active.Add(pair.Key, pair.Value);
-                pendingLayouts.Add(pair.Key);
             }
 
+            pendingLayouts.UnionWith(layouts);
             pendingBindings.UnionWith(bindings);
         }
 
@@ -873,7 +977,17 @@ namespace CollectionUI
         // Release 先取消绑定及异步任务，再隐藏归池；池上限仅限制闲置实例。
         void Return(CollectionCell cell, string id)
         {
-            cell.Release();
+            try
+            {
+                cell.Release();
+            }
+            catch
+            {
+                cell.gameObject.SetActive(false);
+                Destroy(cell.gameObject);
+                throw;
+            }
+
             cell.gameObject.SetActive(false);
             cell.transform.SetParent(poolRoot, false);
             if (pools[id].Count < maxPooledPerTemplate)
@@ -882,16 +996,45 @@ namespace CollectionUI
                 Destroy(cell.gameObject);
         }
 
+        // 清理失败的业务绑定，清理异常不得覆盖最初的业务异常；坏实例不再进入池。
+        void DiscardFailedCell(CollectionCell cell)
+        {
+            try
+            {
+                cell.Release();
+            }
+            catch
+            {
+            }
+
+            cell.gameObject.SetActive(false);
+            Destroy(cell.gameObject);
+        }
+
         void RecycleAll()
         {
             if (Layout == null)
                 return;
+            Exception failure = null;
             foreach (var pair in active)
                 if (pair.Value != null)
-                    Return(pair.Value, Layout.Entries[pair.Key].Item.ReuseIdentifier);
+                {
+                    try
+                    {
+                        Return(pair.Value, Layout.Entries[pair.Key].Item.ReuseIdentifier);
+                    }
+                    catch (Exception exception)
+                    {
+                        if (failure == null)
+                            failure = exception;
+                    }
+                }
+
             active.Clear();
             pendingBindings.Clear();
             pendingLayouts.Clear();
+            if (failure != null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
         }
     }
 }
