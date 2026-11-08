@@ -1,0 +1,19 @@
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+UserSettings/
+.vs/
+.idea/
+.DS_Store
+*.csproj
+*.sln
+*.user
+*.pidb
+*.suo
+*.log
+
+# 本机内部验证产物，不随组件发布
+/Docs/CollectionUIVerification/
+/Assets/CollectionUI/Verification.md
+/Assets/CollectionUI/Verification.md.meta

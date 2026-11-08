@@ -1,0 +1,1 @@
+{"name":"CollectionUI.Tests.PlayMode","references":["CollectionUI","CollectionUI.Samples","Unity.ugui"],"optionalUnityReferences":["TestAssemblies"],"autoReferenced":false}

@@ -1,0 +1,1 @@
+{"name":"CollectionUI.Editor","references":["CollectionUI","CollectionUI.Samples","Unity.ugui"],"includePlatforms":["Editor"]}
