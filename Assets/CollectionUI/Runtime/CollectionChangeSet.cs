@@ -8,6 +8,15 @@ namespace CollectionUI
     public sealed class CollectionChangeSet
     {
         readonly List<Action<Transaction>> operations = new List<Action<Transaction>>();
+        readonly List<TailInsertion> tailInsertions = new List<TailInsertion>();
+        bool onlyInsertions = true;
+        struct TailInsertion
+        {
+            internal string SectionId;
+            internal int Index;
+            internal CollectionItem Item;
+        }
+
         /// <summary>当前操作数；空事务不触发布局。</summary>
         public int Count => operations.Count;
 
@@ -16,12 +25,14 @@ namespace CollectionUI
         {
             var copy = CopyItem(item);
             operations.Add(transaction => transaction.InsertItem(sectionId, index, copy.Copy()));
+            tailInsertions.Add(new TailInsertion { SectionId = sectionId, Index = index, Item = copy });
             return this;
         }
 
         /// <summary>删除全局稳定 ID 对应的条目；未知 ID 导致整个事务失败。</summary>
         public CollectionChangeSet RemoveItem(string itemId)
         {
+            onlyInsertions = false;
             operations.Add(transaction => transaction.RemoveItem(itemId));
             return this;
         }
@@ -29,6 +40,7 @@ namespace CollectionUI
         /// <summary>移动条目，支持跨分区；目标索引为移除源条目后的索引。</summary>
         public CollectionChangeSet MoveItem(string itemId, string destinationSectionId, int index)
         {
+            onlyInsertions = false;
             operations.Add(transaction => transaction.MoveItem(itemId, destinationSectionId, index));
             return this;
         }
@@ -39,6 +51,7 @@ namespace CollectionUI
             var copy = CopyItem(replacement);
             if (copy.Id != itemId)
                 throw new ArgumentException("Updates must preserve stable item IDs.");
+            onlyInsertions = false;
             operations.Add(transaction => transaction.UpdateItem(itemId, copy.Copy()));
             return this;
         }
@@ -47,6 +60,7 @@ namespace CollectionUI
         public CollectionChangeSet InsertSection(int index, CollectionSection section)
         {
             var copy = CopySection(section);
+            onlyInsertions = false;
             operations.Add(transaction => transaction.InsertSection(index, CopySection(copy)));
             return this;
         }
@@ -54,6 +68,7 @@ namespace CollectionUI
         /// <summary>删除分区及其中全部元素。</summary>
         public CollectionChangeSet RemoveSection(string sectionId)
         {
+            onlyInsertions = false;
             operations.Add(transaction => transaction.RemoveSection(sectionId));
             return this;
         }
@@ -61,6 +76,7 @@ namespace CollectionUI
         /// <summary>移动分区；目标索引针对移除该分区后的列表。</summary>
         public CollectionChangeSet MoveSection(string sectionId, int index)
         {
+            onlyInsertions = false;
             operations.Add(transaction => transaction.MoveSection(sectionId, index));
             return this;
         }
@@ -71,8 +87,25 @@ namespace CollectionUI
             var copy = CopySection(replacement);
             if (copy.Id != sectionId)
                 throw new ArgumentException("Updates must preserve stable section IDs.");
+            onlyInsertions = false;
             operations.Add(transaction => transaction.UpdateSection(sectionId, CopySection(copy)));
             return this;
+        }
+
+        // 依据已记录的操作语义识别纯尾部追加，不扫描或比较已有条目。
+        // 不满足时交回普通事务；这里不缩减普通差量操作的验证契约。
+        internal bool TryGetTailInsertions(CollectionSection section, out List<CollectionItem> added)
+        {
+            added = null;
+            if (!onlyInsertions || tailInsertions.Count == 0)
+                return false;
+            for (int i = 0; i < tailInsertions.Count; i++)
+                if (tailInsertions[i].SectionId != section.Id || tailInsertions[i].Index != section.Items.Count + i)
+                    return false;
+            added = new List<CollectionItem>(tailInsertions.Count);
+            foreach (var insertion in tailInsertions)
+                added.Add(insertion.Item.Copy().PrepareLayoutKey(ElementKind.Item, section.Id));
+            return true;
         }
 
         internal CollectionSnapshot Apply(CollectionSnapshot source, out HashSet<string> forced)

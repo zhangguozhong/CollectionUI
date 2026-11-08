@@ -18,12 +18,10 @@ namespace CollectionUI
         }
 
         internal readonly Dictionary<string, SectionGeometry> Sections;
-        readonly List<LayoutEntry> entries;
-        readonly Dictionary<string, int> byKey;
-        readonly Dictionary<string, LayoutEntry> byItem;
-        readonly Dictionary<string, List<int>> supplementaryById = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-        readonly int[] sorted;
-        readonly float[] maxBottom;
+        readonly LayoutEntryBlocks entries;
+        readonly PersistentLayoutLookup<int> byKey, byItem;
+        readonly PersistentLayoutLookup<int[]> supplementaryById;
+        readonly LayoutIntervalNode intervals;
         /// <summary>按构建顺序保存的只读元素列表；可见性查询返回此列表中的索引。</summary>
         public IReadOnlyList<LayoutEntry> Entries { get; }
         /// <summary>布局内容总高度，包含显示分区的内边距和分区之间的间距。</summary>
@@ -34,43 +32,91 @@ namespace CollectionUI
         public int ReusedSectionCount { get; internal set; }
         /// <summary>本次构建中重新计算几何信息的分区数。</summary>
         public int RecomputedSectionCount { get; internal set; }
+        /// <summary>是否仅为尾部分页更新了新增几何、身份索引和可见性索引。</summary>
+        public bool IsIncrementalAppend { get; }
 
         internal LayoutResult(List<LayoutEntry> source, float width, float height, Dictionary<string, SectionGeometry> sections)
         {
-            byKey = new Dictionary<string, int>(source.Count, StringComparer.Ordinal);
-            byItem = new Dictionary<string, LayoutEntry>(source.Count, StringComparer.Ordinal);
+            var keys = new Dictionary<string, int>(source.Count, StringComparer.Ordinal);
+            var items = new Dictionary<string, int>(source.Count, StringComparer.Ordinal);
+            var supplements = new Dictionary<string, List<int>>(StringComparer.Ordinal);
             Sections = sections;
-            entries = source;
-            Entries = source.AsReadOnly();
+            entries = new LayoutEntryBlocks(source);
+            Entries = entries;
             ContentWidth = width;
             ContentHeight = height;
-            sorted = new int[source.Count];
-            maxBottom = new float[source.Count];
+            var sorted = new int[source.Count];
             bool orderedByTop = true;
             for (int i = 0; i < source.Count; i++)
             {
                 sorted[i] = i;
                 if (i > 0 && source[i].Rect.yMin < source[i - 1].Rect.yMin)
                     orderedByTop = false;
-                byKey.Add(source[i].Key, i);
+                keys.Add(source[i].Key, i);
                 if (source[i].Kind == ElementKind.Item)
-                    byItem.Add(source[i].Item.Id, source[i]);
+                    items.Add(source[i].Item.Id, i);
                 else
                 {
-                    if (!supplementaryById.TryGetValue(source[i].Item.Id, out var indices))
-                        supplementaryById.Add(source[i].Item.Id, indices = new List<int>());
+                    if (!supplements.TryGetValue(source[i].Item.Id, out var indices))
+                        supplements.Add(source[i].Item.Id, indices = new List<int>());
                     indices.Add(i);
                 }
             }
 
-            // 列布局及流式布局通常已按顶部排序；实际顺序有回退时才支付排序成本。
+            var supplementArrays = new Dictionary<string, int[]>(supplements.Count, StringComparer.Ordinal);
+            foreach (var pair in supplements)
+                supplementArrays.Add(pair.Key, pair.Value.ToArray());
+            byKey = new PersistentLayoutLookup<int>(keys);
+            byItem = new PersistentLayoutLookup<int>(items);
+            supplementaryById = new PersistentLayoutLookup<int[]>(supplementArrays);
             if (!orderedByTop)
                 Array.Sort(sorted, (a, b) =>
                 {
                     int c = entries[a].Rect.yMin.CompareTo(entries[b].Rect.yMin);
                     return c != 0 ? c : a.CompareTo(b);
                 });
-            BuildIndex(0, sorted.Length);
+            intervals = LayoutIntervalNode.Build(entries, sorted, 0, sorted.Length);
+        }
+
+        // 历史结果的集合、树节点和冻结条目均只读共享；本对象不保留 previous 引用。
+        internal LayoutResult(LayoutResult previous, int retained, List<LayoutEntry> tail, float height, SectionGeometry geometry)
+        {
+            entries = new LayoutEntryBlocks(previous.entries, retained, tail);
+            Entries = entries;
+            ContentWidth = previous.ContentWidth;
+            ContentHeight = height;
+            Sections = new Dictionary<string, SectionGeometry>(previous.Sections, StringComparer.Ordinal);
+            Sections[geometry.Metadata.Id] = geometry;
+            byKey = previous.byKey;
+            byItem = previous.byItem;
+            supplementaryById = previous.supplementaryById;
+            intervals = previous.intervals;
+            if (retained < previous.entries.Count)
+                intervals = LayoutIntervalNode.Remove(intervals, previous.entries[retained], retained);
+            for (int t = 0; t < tail.Count; t++)
+            {
+                int i = retained + t;
+                var entry = tail[t];
+                byKey = byKey.Set(entry.Key, i);
+                if (entry.Kind == ElementKind.Item)
+                    byItem = byItem.Set(entry.Item.Id, i);
+                else
+                {
+                    // 尾页脚身份不变，只替换该身份对应的旧索引；同业务 ID 的其他补充元素保持原位。
+                    supplementaryById.TryGetValue(entry.Item.Id, out var oldIndices);
+                    var indices = (int[])oldIndices.Clone();
+                    for (int j = 0; j < indices.Length; j++)
+                        if (indices[j] == retained)
+                            indices[j] = i;
+                    supplementaryById = supplementaryById.Set(entry.Item.Id, indices);
+                }
+
+                intervals = LayoutIntervalNode.Insert(intervals, entry, i);
+            }
+
+            IsIncrementalAppend = true;
+            ReusedSectionCount = Math.Max(0, Sections.Count - 1);
+            RecomputedSectionCount = 1;
         }
 
         /// <summary>为自定义布局建立查询索引，并复制元素列表及各元素的元数据。
@@ -94,15 +140,6 @@ namespace CollectionUI
             return new LayoutResult(source, width, height, new Dictionary<string, SectionGeometry>(StringComparer.Ordinal));
         }
 
-        float BuildIndex(int lo, int hi)
-        {
-            if (lo >= hi)
-                return float.NegativeInfinity;
-            // 排序数组的中点隐式构成平衡树，每个节点保存整个子树的最大底边。
-            int mid = (lo + hi) / 2;
-            return maxBottom[mid] = Math.Max(entries[sorted[mid]].Rect.yMax, Math.Max(BuildIndex(lo, mid), BuildIndex(mid + 1, hi)));
-        }
-
         /// <summary>清空并填充调用方提供的列表，返回与视口相交的元素索引；复用列表容量可避免每次查询分配。</summary>
         public void Query(Rect viewport, List<int> results)
         {
@@ -111,28 +148,17 @@ namespace CollectionUI
             results.Clear();
             if (viewport.width <= 0 || viewport.height <= 0)
                 return;
-            QueryRange(0, sorted.Length, viewport, results);
-        }
-
-        void QueryRange(int lo, int hi, Rect viewport, List<int> output)
-        {
-            if (lo >= hi)
-                return;
-            int mid = (lo + hi) / 2;
-            // 子树全在视口上方，或最早的顶边已在视口下方时，整个区间均可剪枝。
-            if (maxBottom[mid] <= viewport.yMin || entries[sorted[lo]].Rect.yMin >= viewport.yMax)
-                return;
-            QueryRange(lo, mid, viewport, output);
-            if (entries[sorted[mid]].Rect.Overlaps(viewport))
-                output.Add(sorted[mid]);
-            QueryRange(mid + 1, hi, viewport, output);
+            LayoutIntervalNode.Query(intervals, viewport, results);
         }
 
         /// <summary>按全局普通条目 ID 查找；不查找页眉或页脚，传入空引用时返回 false。</summary>
         public bool TryGetItem(string id, out LayoutEntry entry)
         {
             entry = null;
-            return id != null && byItem.TryGetValue(id, out entry);
+            if (id == null || !byItem.TryGetValue(id, out int index))
+                return false;
+            entry = entries[index];
+            return true;
         }
 
         /// <summary>按完整布局键查找任意元素；传入空引用时返回 false。</summary>
@@ -151,7 +177,7 @@ namespace CollectionUI
             if (id == null)
                 return;
             if (byItem.TryGetValue(id, out var item))
-                results.Add(byKey[item.Key]);
+                results.Add(item);
             if (supplementaryById.TryGetValue(id, out var indices))
                 results.AddRange(indices);
         }
@@ -433,6 +459,96 @@ namespace CollectionUI
                 ReusedSectionCount = reused,
                 RecomputedSectionCount = recomputed
             };
+        }
+
+        // 仅供已验证的私有尾分区候选：布局设置、历史前缀和头尾身份均未改变。
+        // 调用方负责新增 ID 的全局唯一性；这里不扫描历史 Items，也不复制历史 LayoutEntry。
+        internal static LayoutResult AppendTail(LayoutResult previous, CollectionSection section, int sectionIndex, IReadOnlyList<CollectionItem> added, Func<CollectionItem, float, Vector2> measure = null)
+        {
+            if (previous == null || section == null || added == null)
+                throw new ArgumentNullException(previous == null ? nameof(previous) : section == null ? nameof(section) : nameof(added));
+            if (added.Count == 0 || !previous.Sections.TryGetValue(section.Id, out var old) || old.Metadata.Items.Count == 0 || section.Items.Count - added.Count != old.Metadata.Items.Count || old.FirstEntry + old.Count != previous.Entries.Count || section.Layout.Mode == LayoutMode.Skyline || sectionIndex != previous.Entries[old.FirstEntry].SectionIndex)
+                throw new ArgumentException("Incremental append requires a nonempty unchanged final Columns or Flow section.");
+            var settings = section.Layout;
+            float available = previous.ContentWidth - settings.Insets.Left - settings.Insets.Right;
+            int itemStart = section.Items.Count - added.Count;
+            // 在任何用户测量回调前冻结整批新增元数据，防止回调改写后续条目的身份。
+            for (int i = 0; i < added.Count; i++)
+            {
+                if (!ReferenceEquals(added[i], section.Items[itemStart + i]))
+                    throw new ArgumentException("Added items must be the candidate section tail.");
+                added[i].Freeze();
+            }
+
+            var tail = new List<LayoutEntry>(added.Count + (section.Footer == null ? 0 : 1));
+            var geometry = new LayoutResult.SectionGeometry
+            {
+                Metadata = section,
+                FirstEntry = old.FirstEntry,
+                Start = old.Start,
+                Count = old.Count + added.Count
+            };
+            float bottom = old.ItemBottom;
+            if (settings.Mode == LayoutMode.Columns)
+            {
+                float width = (available - (settings.ColumnCount - 1) * settings.HorizontalSpacing) / settings.ColumnCount;
+                Positive(width, "Column width");
+                var heights = (float[])old.ColumnHeights.Clone();
+                geometry.ColumnHeights = heights;
+                for (int i = 0; i < added.Count; i++)
+                {
+                    int column = 0;
+                    for (int c = 1; c < heights.Length; c++)
+                        if (heights[c] < heights[column])
+                            column = c;
+                    var size = Resolve(added[i], width, measure);
+                    float x = settings.Insets.Left + column * (width + settings.HorizontalSpacing);
+                    AddPositioned(tail, previous.ContentWidth, section, sectionIndex, added[i], itemStart + i, ElementKind.Item, x, heights[column], size);
+                    bottom = Math.Max(bottom, heights[column] + size.y);
+                    heights[column] += size.y + settings.VerticalSpacing;
+                }
+            }
+            else if (settings.Mode == LayoutMode.Flow)
+            {
+                float rowY = old.RowY, rowHeight = old.RowHeight, nextX = old.NextX;
+                for (int i = 0; i < added.Count; i++)
+                {
+                    var size = Resolve(added[i], available, measure);
+                    float x = nextX + settings.HorizontalSpacing;
+                    if (x + size.x > available)
+                    {
+                        rowY += rowHeight + settings.VerticalSpacing;
+                        rowHeight = 0;
+                        x = 0;
+                    }
+
+                    AddPositioned(tail, previous.ContentWidth, section, sectionIndex, added[i], itemStart + i, ElementKind.Item, settings.Insets.Left + x, rowY, size);
+                    rowHeight = Math.Max(rowHeight, size.y);
+                    bottom = rowY + rowHeight;
+                    nextX = x + size.x;
+                }
+
+                geometry.RowY = rowY;
+                geometry.RowHeight = rowHeight;
+                geometry.NextX = nextX;
+            }
+            else
+                throw new ArgumentException("Incremental append requires Columns or Flow layout.");
+            geometry.ItemBottom = bottom;
+            int retained = previous.Entries.Count;
+            if (section.Footer != null)
+            {
+                var footer = previous.Entries[--retained];
+                // 头尾设置没有变化，页脚仅平移；复用旧测量尺寸，不能再次触发业务测量回调。
+                float footerY = bottom + settings.VerticalSpacing;
+                AddPositioned(tail, previous.ContentWidth, section, sectionIndex, footer.Item, -2, ElementKind.Footer, settings.Insets.Left, footerY, footer.Rect.size);
+                bottom = footerY + footer.Rect.height;
+            }
+
+            float height = bottom + settings.Insets.Bottom;
+            NonNegative(height, "Content height");
+            geometry.Height = height - old.Start;
+            return new LayoutResult(previous, retained, tail, height, geometry);
         }
 
         static bool Equivalent(CollectionSection a, CollectionSection b, bool prefix = false)

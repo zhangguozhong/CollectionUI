@@ -274,6 +274,20 @@ collection.ApplyChanges(new CollectionChangeSet()
 
 显式 `UpdateItem`、`UpdateSection` 强制更新目标的测量与绑定，不要求递增 Version。普通 `ApplySnapshot` 不会检查 Data 对象内部，内容影响尺寸时请递增 Version 或使用失效 API。`ReloadItems` 不会测量新高度。更换 `MeasureItem` 后需调用 `InvalidateStyle()`。
 
+### 分页追加
+
+每页返回后，将本页条目放进同一个 ChangeSet，一次提交：
+
+```csharp
+var changes = new CollectionChangeSet();
+for (int i = 0; i < pageItems.Count; i++)
+    changes.InsertItem("feed", loadedCount + i, pageItems[i]);
+collection.ApplyChanges(changes);
+loadedCount += pageItems.Count; // 提交成功后更新业务计数
+```
+
+`loadedCount` 是该分区已有条目数；每个条目 ID 必须全局唯一。不要为追加一页反复调用 `GetSnapshotCopy()` 或逐条提交。快照的最后一个分区非空且使用内置 Columns/Flow 布局时，连续尾部追加自动使用增量路径，LTR/RTL 均支持；首次空列表和其他更新方式使用通用路径，无需业务切换 API。
+
 ### 吸顶与定位
 
 在 CollectionView 同节点添加 `CollectionStickyHeaders` 即可使用页眉模板吸顶；下一分区将前一页眉推出，无页眉分区清除前一吸顶头。Expanded 不启用吸顶。

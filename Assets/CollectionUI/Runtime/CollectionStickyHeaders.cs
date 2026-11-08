@@ -85,36 +85,37 @@ namespace CollectionUI
         void IndexSections(LayoutResult layout)
         {
             sections.Clear();
-            var byId = new Dictionary<string, Section>(StringComparer.Ordinal);
-            // 内置布局提供真实分区边界，包含内边距和显示的空分区。
-            foreach (var pair in layout.Sections)
+            if (layout.Sections.Count != 0)
             {
-                var section = new Section
+                // 内置结果已有分区边界与起始元素；分页追加后只访问分区，不扫描所有旧条目。
+                foreach (var pair in layout.Sections)
                 {
-                    Id = pair.Key,
-                    Start = pair.Value.Start
-                };
-                byId.Add(section.Id, section);
-                sections.Add(section);
-            }
-
-            // 自定义布局未提供分区几何时，从全部条目推导；不能假设页眉位于 Entries[0]。
-            foreach (var entry in layout.Entries)
-            {
-                if (!byId.TryGetValue(entry.SectionId, out var section))
-                {
-                    section = new Section
-                    {
-                        Id = entry.SectionId,
-                        Start = entry.Rect.yMin
-                    };
-                    byId.Add(section.Id, section);
-                    sections.Add(section);
+                    var geometry = pair.Value;
+                    var first = geometry.Count > 0 ? layout.Entries[geometry.FirstEntry] : null;
+                    sections.Add(new Section { Id = pair.Key, Start = geometry.Start, Header = first != null && first.Kind == ElementKind.Header ? first : null });
                 }
-                else if (!layout.Sections.ContainsKey(entry.SectionId))
-                    section.Start = Mathf.Min(section.Start, entry.Rect.yMin);
-                if (entry.Kind == ElementKind.Header && (section.Header == null || entry.Rect.yMin < section.Header.Rect.yMin))
-                    section.Header = entry;
+            }
+            else
+            {
+                // 自定义布局没有分区元数据，仍从全部条目推导，不能假设页眉位于 Entries[0]。
+                var byId = new Dictionary<string, Section>(StringComparer.Ordinal);
+                foreach (var entry in layout.Entries)
+                {
+                    if (!byId.TryGetValue(entry.SectionId, out var section))
+                    {
+                        section = new Section
+                        {
+                            Id = entry.SectionId,
+                            Start = entry.Rect.yMin
+                        };
+                        byId.Add(section.Id, section);
+                        sections.Add(section);
+                    }
+                    else
+                        section.Start = Mathf.Min(section.Start, entry.Rect.yMin);
+                    if (entry.Kind == ElementKind.Header && (section.Header == null || entry.Rect.yMin < section.Header.Rect.yMin))
+                        section.Header = entry;
+                }
             }
 
             sections.Sort((a, b) => a.Start.CompareTo(b.Start));

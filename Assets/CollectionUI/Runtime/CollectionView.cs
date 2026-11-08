@@ -333,6 +333,8 @@ namespace CollectionUI
             if (changes.Count == 0)
                 return;
             using var changesScope = ChangesMarker.Auto();
+            if (TryApplyTailAppend(changes))
+                return;
             var candidate = changes.Apply(snapshot ?? new CollectionSnapshot(), out var forced);
             ApplySnapshotCore(candidate, forced, true);
         }
