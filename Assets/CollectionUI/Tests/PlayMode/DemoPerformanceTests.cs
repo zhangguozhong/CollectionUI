@@ -91,7 +91,11 @@ namespace CollectionUI.Tests
         }
 
         [UnityTest]
-        public IEnumerator RealDemoScrollsAllScenariosAtOneAndTenThousandItems()
+        public IEnumerator RealDemoScrollsAllScenariosAtOneAndTenThousandItems() => ScrollAllScenarios(LayoutDirection.LeftToRight);
+        [UnityTest]
+        public IEnumerator RealRtlDemoScrollsAllScenariosAtOneAndTenThousandItems() => ScrollAllScenarios(LayoutDirection.RightToLeft);
+        // 使用同一真实演示、相机和断言比较两个方向，避免只用空白 Cell 验证 RTL。
+        IEnumerator ScrollAllScenarios(LayoutDirection direction)
         {
             var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/CollectionViewDemo.prefab"));
             var cameraObject = new GameObject("DemoBenchmarkCamera", typeof(Camera));
@@ -119,6 +123,7 @@ namespace CollectionUI.Tests
                 yield return null;
                 var demo = root.GetComponent<CollectionViewDemo>();
                 var view = demo.Collection;
+                demo.SetDirection(direction);
                 Assert.That(view.ScrollRect.viewport.rect.height, Is.EqualTo(1420).Within(1));
                 foreach (var scenario in new[]
                 {
@@ -164,7 +169,7 @@ namespace CollectionUI.Tests
                         double sum = 0;
                         foreach (double ms in timings)
                             sum += ms;
-                        Debug.Log("COLLECTION_UI_DEMO_BENCHMARK viewport=" + scroll.viewport.rect.size + " scenario=" + scenario + " items=" + count + " layoutMs=" + layoutMs.ToString("F3") + " refreshMeanMs=" + (sum / timings.Length).ToString("F4") + " refreshP95Ms=" + timings[113].ToString("F4") + " activeMax=" + maxActive + " pooled=" + view.PooledCellCount + " createdCumulative=" + view.CreatedCellCount);
+                        Debug.Log("COLLECTION_UI_DEMO_BENCHMARK direction=" + direction + " viewport=" + scroll.viewport.rect.size + " scenario=" + scenario + " items=" + count + " layoutMs=" + layoutMs.ToString("F3") + " refreshMeanMs=" + (sum / timings.Length).ToString("F4") + " refreshP95Ms=" + timings[113].ToString("F4") + " activeMax=" + maxActive + " pooled=" + view.PooledCellCount + " createdCumulative=" + view.CreatedCellCount);
                         Assert.That(view.LayoutBuildCount, Is.EqualTo(builds));
                         Assert.That(maxActive, Is.LessThan(180));
                         if (count == 10000)
@@ -184,6 +189,10 @@ namespace CollectionUI.Tests
                                 {
                                     var cell = cells.SingleOrDefault(c => c.ItemId == entry.Item.Id);
                                     Assert.That(cell, Is.Not.Null, scenario + " 漏显 " + entry.Item.Id);
+                                    var cellRect = (RectTransform)cell.transform;
+                                    Assert.That(cellRect.anchoredPosition.x, Is.EqualTo(entry.Rect.x).Within(.01f), "复用后横坐标错误");
+                                    Assert.That(cellRect.anchoredPosition.y, Is.EqualTo(-entry.Rect.y).Within(.01f), "复用后纵坐标错误");
+                                    Assert.That(cellRect.rect.size, Is.EqualTo(entry.Rect.size));
                                     Assert.That(cell.GetComponentsInChildren<UnityEngine.UI.Text>().Any(t => !string.IsNullOrEmpty(t.text)), Is.True, "绑定后文字为空");
                                 }
                             }
