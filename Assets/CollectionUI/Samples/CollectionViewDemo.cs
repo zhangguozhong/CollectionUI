@@ -7,26 +7,27 @@ namespace CollectionUI.Samples
     [UnityEngine.Scripting.APIUpdating.MovedFrom(true, "UniversalWaterfall.Samples", "UniversalWaterfall.Samples", "WaterfallDemo")]
     public sealed class CollectionViewDemo : MonoBehaviour
     {
-        public const int CurrentSchema = 4;
+        public const int CurrentSchema = 5;
         [SerializeField]
         int schema = CurrentSchema;
         [SerializeField]
         CollectionView collection;
         [SerializeField]
-        Text statistics, modeLabel, autoLabel;
+        Text statistics, modeLabel, autoLabel, directionLabel;
         [SerializeField]
-        Button thousand, tenThousand, autoScroll, toggleMode;
+        Button thousand, tenThousand, autoScroll, toggleMode, toggleDirection;
         public int Schema => schema;
         public CollectionView Collection => collection;
         public bool AutoScroll { get; set; }
         public int Count { get; private set; } = 1000;
+        public LayoutDirection Direction { get; private set; } = LayoutDirection.LeftToRight;
         public DemoScenario Scenario { get; private set; } = DemoScenario.Tags;
         public LayoutMode Mode => Scenario == DemoScenario.Tags ? LayoutMode.Flow : Scenario == DemoScenario.FreeRectangles ? LayoutMode.Skyline : LayoutMode.Columns;
 
         float nextStatistics, direction = 1, measurementScale = -1;
         Canvas hostCanvas;
         /// <summary>供 Seeder 连接序列化引用。控件事件在 Start 注册，在销毁时解除。</summary>
-        public void Configure(CollectionView view, Text stats, Button small, Button large, Button auto, Button mode)
+        public void Configure(CollectionView view, Text stats, Button small, Button large, Button auto, Button mode, Button layoutDirection)
         {
             collection = view;
             statistics = stats;
@@ -34,6 +35,8 @@ namespace CollectionUI.Samples
             tenThousand = large;
             autoScroll = auto;
             toggleMode = mode;
+            toggleDirection = layoutDirection;
+            directionLabel = layoutDirection.GetComponentInChildren<Text>();
             modeLabel = mode.GetComponentInChildren<Text>();
             autoLabel = auto.GetComponentInChildren<Text>();
         }
@@ -44,6 +47,7 @@ namespace CollectionUI.Samples
             tenThousand.onClick.AddListener(LoadTenThousand);
             autoScroll.onClick.AddListener(ToggleAuto);
             toggleMode.onClick.AddListener(SwitchMode);
+            toggleDirection.onClick.AddListener(SwitchDirection);
             Load(Count);
         }
 
@@ -57,6 +61,8 @@ namespace CollectionUI.Samples
                 autoScroll.onClick.RemoveListener(ToggleAuto);
             if (toggleMode != null)
                 toggleMode.onClick.RemoveListener(SwitchMode);
+            if (toggleDirection != null)
+                toggleDirection.onClick.RemoveListener(SwitchDirection);
         }
 
         void LoadThousand()
@@ -78,6 +84,25 @@ namespace CollectionUI.Samples
         void SwitchMode()
         {
             SetScenario((DemoScenario)(((int)Scenario + 1) % 4));
+        }
+
+        void SwitchDirection()
+        {
+            SetDirection(Direction == LayoutDirection.LeftToRight ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight);
+        }
+
+        /// <summary>只修改几何方向，保留当前业务数据、测量缓存与滚动锚点；文字本身不做双向排版。</summary>
+        public void SetDirection(LayoutDirection value)
+        {
+            if (value != LayoutDirection.LeftToRight && value != LayoutDirection.RightToLeft)
+                throw new System.ArgumentOutOfRangeException(nameof(value));
+            var snapshot = collection.GetSnapshotCopy();
+            foreach (var section in snapshot.Sections)
+                section.Layout.Direction = value;
+            collection.ApplySnapshot(snapshot);
+            Direction = value;
+            directionLabel.text = value == LayoutDirection.RightToLeft ? "RTL / RIGHT START" : "LTR / LEFT START";
+            UpdateStatistics();
         }
 
         public void SetMode(LayoutMode mode)
@@ -121,7 +146,22 @@ namespace CollectionUI.Samples
             }
 
             collection.MeasureItem = DemoContent.Measure;
-            collection.ApplySnapshot(DemoContent.Create(count, Scenario, DemoContent.ForScale(scale)));
+            var snapshot = DemoContent.Create(count, Scenario, DemoContent.ForScale(scale));
+            foreach (var section in snapshot.Sections)
+            {
+                section.Layout.Direction = Direction;
+                foreach (var item in section.Items)
+                {
+                    // 序号随数据不随方向改变，便于直接观察首项是否从右侧开始。
+                    string index = item.Id.Substring("item-".Length);
+                    if (item.Data is TagData tag)
+                        tag.Text = "#" + index + " " + tag.Text;
+                    else if (item.Data is ProductData product)
+                        product.ImageLabel = "#" + index + " " + product.ImageLabel;
+                }
+            }
+
+            collection.ApplySnapshot(snapshot);
             modeLabel.text = ScenarioName(Scenario) + "  >  " + ScenarioName((DemoScenario)(((int)Scenario + 1) % 4));
             UpdateStatistics();
         }

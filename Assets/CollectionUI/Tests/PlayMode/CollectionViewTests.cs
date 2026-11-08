@@ -79,6 +79,102 @@ namespace CollectionUI.Tests
         }
 
         [UnityTest]
+        public IEnumerator DirectionChangeKeepsMeasurementsBindingsAndVerticalAnchor()
+        {
+            var data = Data(100);
+            var section = data.Sections[0];
+            section.Layout.Insets = new Insets(13, 7, 29, 11);
+            section.Header = new CollectionItem
+            {
+                Id = "header",
+                ReuseIdentifier = "card",
+                Size = ItemSize.Fixed(120, 40)
+            };
+            foreach (var item in section.Items)
+                item.Size = ItemSize.Measured();
+            int measurements = 0;
+            view.MeasureItem = (item, width) =>
+            {
+                measurements++;
+                return new Vector2(width - 7, 100);
+            };
+            var sticky = view.gameObject.AddComponent<CollectionStickyHeaders>();
+            view.ApplySnapshot(data);
+            view.ScrollToItem("item30");
+            yield return null;
+            int measuredBefore = measurements;
+            float offset = view.ScrollRect.content.anchoredPosition.y;
+            float height = view.Layout.ContentHeight;
+            var cells = view.ScrollRect.content.GetComponentsInChildren<CollectionCell>();
+            var versions = new System.Collections.Generic.Dictionary<string, int>();
+            foreach (var cell in cells)
+                versions[cell.ItemId] = cell.BindingVersion;
+            var next = view.GetSnapshotCopy();
+            next.Sections[0].Layout.Direction = LayoutDirection.RightToLeft;
+            view.ApplySnapshot(next);
+            yield return null;
+            Assert.AreEqual(measuredBefore, measurements);
+            Assert.AreEqual(height, view.Layout.ContentHeight);
+            Assert.That(view.ScrollRect.content.anchoredPosition.y, Is.EqualTo(offset).Within(.01f));
+            foreach (var cell in view.ScrollRect.content.GetComponentsInChildren<CollectionCell>())
+            {
+                Assert.AreEqual(versions[cell.ItemId], cell.BindingVersion);
+                Assert.IsTrue(view.Layout.TryGetItem(cell.ItemId, out var entry));
+                Assert.That(((RectTransform)cell.transform).anchoredPosition.x, Is.EqualTo(entry.Rect.x).Within(.01f));
+            }
+
+            var headerCopies = view.ScrollRect.viewport.GetComponentsInChildren<CollectionCell>();
+            bool foundHeader = false;
+            foreach (var cell in headerCopies)
+                if (cell.ItemId == "header")
+                {
+                    foundHeader = true;
+                    Assert.That(((RectTransform)cell.transform).anchoredPosition.x, Is.EqualTo(600 - 29 - 120).Within(.01f));
+                }
+
+            Assert.IsTrue(foundHeader, "吸顶页眉应跟随 RTL 横坐标");
+        }
+
+        [UnityTest]
+        public IEnumerator RtlTenThousandItemsStayVirtualDuringLargeScrollJumps()
+        {
+            foreach (var mode in new[]
+            {
+                LayoutMode.Columns,
+                LayoutMode.Flow,
+                LayoutMode.Skyline
+            }
+
+            )
+            {
+                var data = Data(10000);
+                data.Sections[0].Layout.Direction = LayoutDirection.RightToLeft;
+                data.Sections[0].Layout.Mode = mode;
+                foreach (var item in data.Sections[0].Items)
+                    item.Size = ItemSize.Fixed(120, 100);
+                view.ApplySnapshot(data);
+                int builds = view.LayoutBuildCount;
+                for (int jump = 0; jump < 6; jump++)
+                {
+                    view.ScrollToItem(jump % 2 == 0 ? "item9999" : "item0");
+                    yield return null;
+                    Assert.That(view.GetVisibleItems(), Does.Contain(jump % 2 == 0 ? "item9999" : "item0"));
+                    Assert.That(view.ActiveCellCount, Is.InRange(1, 100));
+                    foreach (var cell in view.ScrollRect.content.GetComponentsInChildren<CollectionCell>())
+                    {
+                        Assert.IsTrue(cell.IsBound);
+                        Assert.IsTrue(view.Layout.TryGetItem(cell.ItemId, out var entry));
+                        var rect = (RectTransform)cell.transform;
+                        Assert.AreEqual(entry.Rect.x, rect.anchoredPosition.x);
+                        Assert.AreEqual(entry.Rect.size, rect.sizeDelta);
+                    }
+                }
+
+                Assert.AreEqual(builds, view.LayoutBuildCount, "滚动不能触发 RTL 重排");
+            }
+        }
+
+        [UnityTest]
         public IEnumerator TenThousandItemsRemainVirtualAndScrollToEnd()
         {
             view.ApplySnapshot(Data(10000));

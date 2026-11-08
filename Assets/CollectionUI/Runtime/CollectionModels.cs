@@ -12,6 +12,13 @@ namespace CollectionUI
         Flow = 2
     }
 
+    /// <summary>分区的水平排列方向；只影响元素位置，不改变数据顺序或文字排版。</summary>
+    public enum LayoutDirection
+    {
+        LeftToRight = 0,
+        RightToLeft = 1
+    }
+
     /// <summary>布局元素的角色；页眉、页脚与普通条目使用不同的标识规则。</summary>
     public enum ElementKind
     {
@@ -201,6 +208,9 @@ namespace CollectionUI
     {
         /// <summary>分区条目的排列策略。</summary>
         public LayoutMode Mode = LayoutMode.Columns;
+        /// <summary>水平排列起点；默认从左向右，RTL 从右侧开始，左右内边距仍保持物理含义。</summary>
+        [Tooltip("水平排列方向：LeftToRight 从左开始，RightToLeft 从右开始；不改变数据顺序、文字方向或左右内边距。")]
+        public LayoutDirection Direction = LayoutDirection.LeftToRight;
         /// <summary>等宽列模式使用的列数；所有模式均要求该值大于零。</summary>
         public int ColumnCount = 2;
         /// <summary>分区外围内边距，页眉、条目及页脚均位于其内部。</summary>

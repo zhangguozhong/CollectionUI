@@ -275,7 +275,7 @@ namespace CollectionUI
                 if (!append && section.Header != null)
                 {
                     var size = Resolve(section.Header, available, measure);
-                    Add(entries, section, si, section.Header, -1, ElementKind.Header, settings.Insets.Left, y, size);
+                    AddPositioned(entries, viewportWidth, section, si, section.Header, -1, ElementKind.Header, settings.Insets.Left, y, size);
                     y += size.y;
                     hasBlock = true;
                 }
@@ -289,7 +289,7 @@ namespace CollectionUI
                     {
                         float width = (available - (settings.ColumnCount - 1) * settings.HorizontalSpacing) / settings.ColumnCount;
                         Positive(width, "Column width");
-                        // 每个条目放入当前最短列；等高时保留最左列，保证相同输入得到稳定结果。
+                        // 每个条目放入当前最短列；等高时保留逻辑起始列（LTR 最左、RTL 最右），保证相同输入得到稳定结果。
                         var heights = append ? (float[])old.ColumnHeights.Clone() : new float[settings.ColumnCount];
                         if (!append)
                             for (int i = 0; i < heights.Length; i++)
@@ -303,14 +303,14 @@ namespace CollectionUI
                                     column = c;
                             var size = Resolve(section.Items[i], width, measure);
                             float x = settings.Insets.Left + column * (width + settings.HorizontalSpacing);
-                            Add(entries, section, si, section.Items[i], i, ElementKind.Item, x, heights[column], size);
+                            AddPositioned(entries, viewportWidth, section, si, section.Items[i], i, ElementKind.Item, x, heights[column], size);
                             bottom = Math.Max(bottom, heights[column] + size.y);
                             heights[column] += size.y + settings.VerticalSpacing;
                         }
                     }
                     else if (settings.Mode == LayoutMode.Flow)
                     {
-                        // 按输入顺序从左向右排列；当前行最高元素决定下一行顶部，超宽时整项换行。
+                        // 按输入顺序从逻辑起点排列；当前行最高元素决定下一行顶部，超宽时整项换行。
                         float rowY = append ? old.RowY : y, rowHeight = append ? old.RowHeight : 0, nextX = append ? old.NextX : 0;
                         bool hasRowItem = append;
                         for (int i = itemStart; i < section.Items.Count; i++)
@@ -324,7 +324,7 @@ namespace CollectionUI
                                 x = 0;
                             }
 
-                            Add(entries, section, si, section.Items[i], i, ElementKind.Item, settings.Insets.Left + x, rowY, size);
+                            AddPositioned(entries, viewportWidth, section, si, section.Items[i], i, ElementKind.Item, settings.Insets.Left + x, rowY, size);
                             rowHeight = Math.Max(rowHeight, size.y);
                             bottom = rowY + rowHeight;
                             nextX = x + size.x;
@@ -376,7 +376,7 @@ namespace CollectionUI
                                 }
                             }
 
-                            Add(entries, section, si, section.Items[i], i, ElementKind.Item, settings.Insets.Left + bestX, bestY, size);
+                            AddPositioned(entries, viewportWidth, section, si, section.Items[i], i, ElementKind.Item, settings.Insets.Left + bestX, bestY, size);
                             bottom = Math.Max(bottom, bestY + size.y);
                             float right = Math.Min(available, bestX + size.x + settings.HorizontalSpacing);
                             // 替换被新元素覆盖的天际线范围，保留左右未覆盖部分，供下一个条目继续搜索。
@@ -417,7 +417,7 @@ namespace CollectionUI
                     if (hasBlock)
                         y += settings.VerticalSpacing;
                     var size = Resolve(section.Footer, available, measure);
-                    Add(entries, section, si, section.Footer, -2, ElementKind.Footer, settings.Insets.Left, y, size);
+                    AddPositioned(entries, viewportWidth, section, si, section.Footer, -2, ElementKind.Footer, settings.Insets.Left, y, size);
                     y += size.y;
                 }
 
@@ -439,7 +439,7 @@ namespace CollectionUI
         {
             var x = a.Layout;
             var y = b.Layout;
-            if (x.Mode != y.Mode || x.ColumnCount != y.ColumnCount || x.HorizontalSpacing != y.HorizontalSpacing || x.VerticalSpacing != y.VerticalSpacing || x.SectionSpacing != y.SectionSpacing || x.ShowEmptySection != y.ShowEmptySection || x.Insets.Left != y.Insets.Left || x.Insets.Top != y.Insets.Top || x.Insets.Right != y.Insets.Right || x.Insets.Bottom != y.Insets.Bottom || (!prefix && a.Items.Count != b.Items.Count) || !Equivalent(a.Header, b.Header) || !Equivalent(a.Footer, b.Footer))
+            if (x.Mode != y.Mode || x.Direction != y.Direction || x.ColumnCount != y.ColumnCount || x.HorizontalSpacing != y.HorizontalSpacing || x.VerticalSpacing != y.VerticalSpacing || x.SectionSpacing != y.SectionSpacing || x.ShowEmptySection != y.ShowEmptySection || x.Insets.Left != y.Insets.Left || x.Insets.Top != y.Insets.Top || x.Insets.Right != y.Insets.Right || x.Insets.Bottom != y.Insets.Bottom || (!prefix && a.Items.Count != b.Items.Count) || !Equivalent(a.Header, b.Header) || !Equivalent(a.Footer, b.Footer))
                 return false;
             for (int i = 0; i < b.Items.Count; i++)
                 if (!Equivalent(a.Items[i], b.Items[i]))
@@ -487,6 +487,21 @@ namespace CollectionUI
             if (a == null || b == null)
                 return a == b;
             return a.Id == b.Id && a.Version == b.Version && a.ReuseIdentifier == b.ReuseIdentifier && a.Size.Mode == b.Size.Mode && a.Size.Width == b.Size.Width && a.Size.Height == b.Size.Height && a.Size.AspectRatio == b.Size.AspectRatio;
+        }
+
+        // 排列与续排状态始终使用 LTR 逻辑坐标；仅新矩形在发布前转换一次。
+        // 缓存中的 Rect 已是物理坐标，AddReused 必须绕过此转换，防止 RTL 被再次镜像。
+        static void AddPositioned(List<LayoutEntry> entries, float viewportWidth, CollectionSection section, int si, CollectionItem item, int ii, ElementKind kind, float x, float y, Vector2 size)
+        {
+            var settings = section.Layout;
+            if (settings.Direction == LayoutDirection.RightToLeft)
+            {
+                x = viewportWidth - settings.Insets.Right - (x - settings.Insets.Left) - size.x;
+                // 分数列宽的多次浮点运算可能使最左边界略小于 Insets.Left，收敛到合法边界。
+                x = Math.Max(settings.Insets.Left, x);
+            }
+
+            Add(entries, section, si, item, ii, kind, x, y, size);
         }
 
         static void Add(List<LayoutEntry> entries, CollectionSection section, int si, CollectionItem item, int ii, ElementKind kind, float x, float y, Vector2 size)
@@ -543,6 +558,8 @@ namespace CollectionUI
                 if (string.IsNullOrEmpty(section.Id) || !sections.Add(section.Id))
                     throw new ArgumentException("Section IDs must be nonempty and unique.");
                 var s = section.Layout;
+                if (s.Direction != LayoutDirection.LeftToRight && s.Direction != LayoutDirection.RightToLeft)
+                    throw new ArgumentException("Unknown layout direction.");
                 if (s.Mode != LayoutMode.Columns && s.Mode != LayoutMode.Skyline && s.Mode != LayoutMode.Flow)
                     throw new ArgumentException("Unknown layout mode.");
                 if (s.ColumnCount < 1)

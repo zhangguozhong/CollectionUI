@@ -67,6 +67,8 @@ namespace CollectionUI.Editor
             var small = Button(row, "OneThousand", "1,000 ITEMS");
             var large = Button(row, "TenThousand", "10,000 ITEMS");
             var auto = Button(row, "AutoScroll", "AUTO SCROLL");
+            // 同一行等分剩余宽度；方向按钮由父 LayoutGroup 管理，不增加独立坐标或争用内容区。
+            var direction = Button(row, "LayoutDirection", "LTR / LEFT START");
             var bottom = Rect("Footer", safe);
             bottom.anchorMin = Vector2.zero;
             bottom.anchorMax = new Vector2(1, 0);
@@ -102,7 +104,7 @@ namespace CollectionUI.Editor
             var events = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
             events.transform.SetParent(root.transform, false);
             var demo = root.AddComponent<CollectionViewDemo>();
-            demo.Configure(collection, stats, small, large, auto, mode);
+            demo.Configure(collection, stats, small, large, auto, mode, direction);
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
             UnityEngine.Object.DestroyImmediate(root);
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, Application.isBatchMode ? NewSceneMode.Single : NewSceneMode.Additive);

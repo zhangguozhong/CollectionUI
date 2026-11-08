@@ -34,7 +34,29 @@ namespace CollectionUI.Editor
             }
         }
 
-        static void CaptureOne(string directory, int width, int height, LayoutMode mode = LayoutMode.Skyline, bool boundary = false, DemoScenario? scenario = null)
+        /// <summary>方向验收覆盖四场景、窄屏/参考屏/高屏，额外覆盖左右方向的分组边界。</summary>
+        public static void CaptureDirections()
+        {
+            CollectionViewDemoSeeder.Generate();
+            string directory = Path.GetFullPath("Docs/CollectionUIVerification");
+            Directory.CreateDirectory(directory);
+            foreach (DemoScenario scenario in System.Enum.GetValues(typeof(DemoScenario)))
+                foreach (var direction in new[]
+                {
+                    LayoutDirection.LeftToRight,
+                    LayoutDirection.RightToLeft
+                }
+
+                )
+                {
+                    CaptureOne(directory, 720, 1280, scenario: scenario, direction: direction);
+                    CaptureOne(directory, 1080, 1920, scenario: scenario, direction: direction);
+                    CaptureOne(directory, 1080, 2400, scenario: scenario, direction: direction);
+                    CaptureOne(directory, 1080, 1920, boundary: true, scenario: scenario, direction: direction);
+                }
+        }
+
+        static void CaptureOne(string directory, int width, int height, LayoutMode mode = LayoutMode.Skyline, bool boundary = false, DemoScenario? scenario = null, LayoutDirection? direction = null)
         {
             var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(CollectionViewDemoSeeder.PrefabPath));
             var cameraObject = new GameObject("CaptureCamera", typeof(Camera));
@@ -75,15 +97,17 @@ namespace CollectionUI.Editor
                     demo.SetMode(mode);
                 }
 
+                if (direction.HasValue)
+                    demo.SetDirection(direction.Value);
                 if (boundary)
-                    demo.Collection.ScrollToItem(scenario == DemoScenario.Tags ? "item-14" : "item-199");
+                    demo.Collection.ScrollToItem(scenario == DemoScenario.Tags && !direction.HasValue ? "item-14" : "item-199");
                 Canvas.ForceUpdateCanvases();
                 camera.Render();
                 RenderTexture.active = rt;
                 var image = new Texture2D(width, height, TextureFormat.RGB24, false);
                 image.ReadPixels(new Rect(0, 0, width, height), 0, 0);
                 image.Apply();
-                File.WriteAllBytes(Path.Combine(directory, "demo-" + width + "x" + height + (scenario.HasValue ? "-" + scenario.Value.ToString().ToLowerInvariant() : mode == LayoutMode.Columns ? "-columns" : "") + (boundary ? (scenario == DemoScenario.Tags ? "-ellipsis" : "-groups") : "") + ".png"), image.EncodeToPNG());
+                File.WriteAllBytes(Path.Combine(directory, "demo-" + width + "x" + height + (scenario.HasValue ? "-" + scenario.Value.ToString().ToLowerInvariant() : mode == LayoutMode.Columns ? "-columns" : "") + (boundary ? (scenario == DemoScenario.Tags && !direction.HasValue ? "-ellipsis" : "-groups") : "") + (direction.HasValue ? "-" + direction.Value.ToString().ToLowerInvariant() : "") + ".png"), image.EncodeToPNG());
                 Object.DestroyImmediate(image);
             }
             finally

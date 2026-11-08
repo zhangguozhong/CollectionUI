@@ -28,6 +28,10 @@ namespace CollectionUI.Tests
             Assert.That(safe.Find("Header"), Is.Not.Null);
             Assert.That(safe.Find("Middle"), Is.Not.Null);
             Assert.That(safe.Find("Footer"), Is.Not.Null);
+            var controls = safe.Find("Header/Controls");
+            Assert.That(controls.GetComponent<HorizontalLayoutGroup>(), Is.Not.Null);
+            Assert.That(controls.Find("LayoutDirection"), Is.Not.Null, "主演示需要方向切换按钮。");
+            Assert.That(controls.childCount, Is.EqualTo(4));
             Assert.That(File.Exists(CollectionViewDemoSeeder.Folder + "/Tag.prefab"));
             Assert.That(File.Exists(CollectionViewDemoSeeder.Folder + "/Product.prefab"));
             var view = prefab.GetComponentInChildren<CollectionView>(true);
@@ -74,6 +78,23 @@ namespace CollectionUI.Tests
                 float middleBottom = corners[0].y;
                 footer.GetWorldCorners(corners);
                 Assert.That(corners[1].y, Is.LessThanOrEqualTo(middleBottom + 0.01f));
+                var controls = (RectTransform)header.Find("Controls");
+                var children = controls.GetComponentsInChildren<Button>();
+                Assert.That(children.Length, Is.EqualTo(4));
+                float previousRight = 0;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    var rect = (RectTransform)children[i].transform;
+                    rect.GetWorldCorners(corners);
+                    float left = controls.InverseTransformPoint(corners[0]).x;
+                    float right = controls.InverseTransformPoint(corners[3]).x;
+                    Assert.That(left, Is.GreaterThanOrEqualTo(controls.rect.xMin - .01f));
+                    Assert.That(right, Is.LessThanOrEqualTo(controls.rect.xMax + .01f));
+                    if (i > 0)
+                        Assert.That(left - previousRight, Is.EqualTo(16).Within(.01f));
+                    previousRight = right;
+                }
+
                 foreach (var button in root.GetComponentsInChildren<Button>())
                 {
                     var r = (RectTransform)button.transform;
@@ -83,6 +104,11 @@ namespace CollectionUI.Tests
                     foreach (var point in corners)
                         Assert.That(new Rect(safe.rect.xMin - .01f, safe.rect.yMin - .01f, safe.rect.width + .02f, safe.rect.height + .02f).Contains(safe.InverseTransformPoint(point)), Is.True, button.name);
                 }
+
+                float beforeWidth = ((RectTransform)children[0].transform).rect.width;
+                children[3].gameObject.SetActive(false);
+                LayoutRebuilder.ForceRebuildLayoutImmediate(controls);
+                Assert.That(((RectTransform)children[0].transform).rect.width, Is.GreaterThan(beforeWidth), "隐藏控件后，其余兄弟按布局组补位。");
             }
             finally
             {

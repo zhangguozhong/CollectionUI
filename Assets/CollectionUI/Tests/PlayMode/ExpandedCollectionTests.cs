@@ -53,6 +53,41 @@ namespace CollectionUI.Tests
         }
 
         [UnityTest]
+        public IEnumerator ExpandedFlowSupportsRtlSwitchAndWidthReflow()
+        {
+            var data = Data(3);
+            var section = data.Sections[0];
+            section.Layout.Mode = LayoutMode.Flow;
+            section.Layout.Insets = new Insets(10, 5, 20, 9);
+            section.Layout.HorizontalSpacing = 10;
+            section.Layout.VerticalSpacing = 7;
+            foreach (var item in section.Items)
+                item.Size = ItemSize.Fixed(100, 30);
+            Host.anchoredPosition = new Vector2(17, -31);
+            view.ApplySnapshot(data);
+            float height = Host.rect.height;
+            section.Layout.Direction = LayoutDirection.RightToLeft;
+            view.ApplySnapshot(data);
+            Assert.AreEqual(height, Host.rect.height);
+            Assert.AreEqual(180, view.Layout.Entries[0].Rect.x);
+            Assert.AreEqual(70, view.Layout.Entries[1].Rect.x);
+            Assert.AreEqual(180, view.Layout.Entries[2].Rect.x);
+            Host.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 220);
+            yield return null;
+            yield return null;
+            Assert.AreEqual(118, Host.rect.height);
+            Assert.AreEqual(new Vector2(17, -31), Host.anchoredPosition);
+            Assert.AreEqual(3, view.ActiveCellCount);
+            Assert.IsNull(node.GetComponent<ScrollRect>());
+            foreach (var cell in node.GetComponentsInChildren<CollectionCell>())
+            {
+                Assert.IsTrue(view.Layout.TryGetItem(cell.ItemId, out var entry));
+                Assert.AreEqual(100, entry.Rect.x);
+                Assert.AreEqual(entry.Rect.x, ((RectTransform)cell.transform).anchoredPosition.x);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator PlainNodeDoesNotRequireScrollRect()
         {
             Assert.That(node.GetComponent<ScrollRect>(), Is.Null, "A plain collection must not auto-add ScrollRect.");

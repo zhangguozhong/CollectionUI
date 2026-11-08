@@ -12,6 +12,84 @@ namespace CollectionUI.Tests
 {
     public class DemoPerformanceTests
     {
+        // 通过真实按钮切换，检查四种场景和两档数据量的方向、顺序、尺寸缓存及滚动锚点。
+        [UnityTest]
+        public IEnumerator DirectionButtonPreservesDataMeasurementsAndScrollAcrossScenarios()
+        {
+            var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/CollectionUI/Samples/Generated/CollectionViewDemo.prefab"));
+            try
+            {
+                yield return null;
+                var demo = root.GetComponent<CollectionViewDemo>();
+                var buttonTransform = root.transform.Find("SafeAreaContent/Header/Controls/LayoutDirection");
+                Assert.That(buttonTransform, Is.Not.Null, "主演示需要方向切换按钮。");
+                var button = buttonTransform.GetComponent<UnityEngine.UI.Button>();
+                foreach (DemoScenario scenario in System.Enum.GetValues(typeof(DemoScenario)))
+                    foreach (int count in new[]
+                    {
+                        1000,
+                        10000
+                    }
+
+                    )
+                    {
+                        demo.SetScenario(scenario);
+                        demo.Load(count);
+                        var view = demo.Collection;
+                        var first = view.GetSnapshotCopy().Sections[0].Items[0];
+                        if (first.Data is TagData tag)
+                            Assert.That(tag.Text, Does.StartWith("#0 "));
+                        if (first.Data is ProductData product)
+                            Assert.That(product.ImageLabel, Does.StartWith("#0 "));
+                        view.ScrollToItem("item-25");
+                        yield return null;
+                        view.ScrollRect.StopMovement();
+                        var entries = view.Layout.Entries.ToArray();
+                        float offset = view.ScrollRect.content.anchoredPosition.y;
+                        float height = view.Layout.ContentHeight;
+                        int measurements = 0;
+                        var measure = view.MeasureItem;
+                        view.MeasureItem = (item, width) =>
+                        {
+                            measurements++;
+                            return measure(item, width);
+                        };
+                        button.onClick.Invoke();
+                        Assert.That(view.GetSnapshotCopy().Sections.All(section => section.Layout.Direction == LayoutDirection.RightToLeft), Is.True);
+                        Assert.That(button.GetComponentInChildren<UnityEngine.UI.Text>().text, Does.Contain("RTL"));
+                        Assert.That(view.Layout.ContentHeight, Is.EqualTo(height).Within(.01f));
+                        Assert.That(view.ScrollRect.content.anchoredPosition.y, Is.EqualTo(offset).Within(.01f));
+                        Assert.That(measurements, Is.Zero, "只切换方向不应重新测量内容。");
+                        Assert.That(view.Layout.Entries.Count, Is.EqualTo(entries.Length));
+                        for (int i = 0; i < entries.Length; i++)
+                        {
+                            var actual = view.Layout.Entries[i];
+                            Assert.That(actual.Item.Id, Is.EqualTo(entries[i].Item.Id));
+                            Assert.That(actual.Item.Data, Is.SameAs(entries[i].Item.Data));
+                            Assert.That(actual.Rect.size, Is.EqualTo(entries[i].Rect.size));
+                            Assert.That(actual.Rect.y, Is.EqualTo(entries[i].Rect.y).Within(.01f));
+                            Assert.That(actual.Rect.x, Is.EqualTo(view.ScrollRect.viewport.rect.width - entries[i].Rect.xMax).Within(.01f));
+                        }
+
+                        view.ScrollToItem("item-" + (count - 1), 1);
+                        yield return null;
+                        Assert.That(view.GetVisibleItems(), Does.Contain("item-" + (count - 1)));
+                        demo.Load(count);
+                        Assert.That(view.GetSnapshotCopy().Sections.All(section => section.Layout.Direction == LayoutDirection.RightToLeft), Is.True, "更换数据量应保留方向。");
+                        demo.SetScenario(scenario);
+                        Assert.That(view.GetSnapshotCopy().Sections.All(section => section.Layout.Direction == LayoutDirection.RightToLeft), Is.True, "更换场景应保留方向。");
+                        button.onClick.Invoke();
+                        Assert.That(view.GetSnapshotCopy().Sections.All(section => section.Layout.Direction == LayoutDirection.LeftToRight), Is.True);
+                    }
+            }
+            finally
+            {
+                Object.Destroy(root);
+            }
+
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator RealDemoScrollsAllScenariosAtOneAndTenThousandItems()
         {

@@ -28,11 +28,13 @@ CollectionUI 用于在 Unity UGUI 中显示分组列表、瀑布流和自动换�
 
 | 场景 | 验证内容 |
 |---|---|
-| `CollectionViewDemo.unity` | 1,000/10,000 条数据、自动滚动、等宽列、任意矩形、标签、内容测量 |
+| `CollectionViewDemo.unity` | 1,000/10,000 条数据、自动滚动、等宽列、任意矩形、标签、内容测量、LTR/RTL 切换 |
 | `ExpandedCollectionDemo.unity` | 普通节点展开、标签换行、可配置高度自适应及后续区域布局 |
 | `InteractionDemo.unity` | 手动完成刷新/加载、预加载互斥、无更多数据、吸顶、定位及差量更新 |
 
 交互演示中点击 `COMPLETE` 模拟数据返回；关闭 `PRELOAD` 后可单独体验上拉 loading。万条数据性能在第一个场景验证。示例界面保留英文标签和 Unity 内置字体，以便直接导入运行；示例图片是色块，不访问网络。
+
+主演示页头的 `LTR / LEFT START` 按钮可切换为 `RTL / RIGHT START`，四种场景及 1,000/10,000 条数据均可使用。标签和商品序号用于观察首项在右侧、同一行从右向左排列；示例文字保持原样，不演示阿拉伯文字体或连字。
 
 菜单 `Tools → Collection UI` 可打开或生成演示。生成前请保存当前场景。
 
@@ -201,7 +203,26 @@ LayoutMetrics metrics = VerticalContentMeasurer.Measure(
 
 任意宽高使用 `LayoutMode.Skyline`，为条目指定 `ItemSize.Fixed(width, height)` 或业务测量尺寸。宽度必须在分区可用范围内，条目不按整齐的行排列。
 
-Columns 的宽度 0 填满列，较窄的显式宽度左对齐；不支持跨列。页眉/页脚宽度 0 填满分区内部宽度。`VerticalSpacing` 也用于页眉、主体、页脚之间；`SectionSpacing` 属于前一可见分区，最后一组后不追加组间距。空分区默认隐藏，`ShowEmptySection=true` 时保留其页眉、页脚及内边距。
+Columns 的宽度 0 填满列，较窄的显式宽度按排列起点对齐（LTR 靠左、RTL 靠右）；不支持跨列。页眉/页脚宽度 0 填满分区内部宽度。`VerticalSpacing` 也用于页眉、主体、页脚之间；`SectionSpacing` 属于前一可见分区，最后一组后不追加组间距。空分区默认隐藏，`ShowEmptySection=true` 时保留其页眉、页脚及内边距。
+
+### 4.4 从右向左排列（RTL）
+
+每个分区独立设置方向，默认 `LeftToRight`。阿拉伯语等场景可由业务根据语言设置为 `RightToLeft`：
+
+```csharp
+var snapshot = collection.GetSnapshotCopy();
+snapshot.Sections[0].Layout.Direction = LayoutDirection.RightToLeft;
+collection.ApplySnapshot(snapshot);
+```
+
+初次创建数据时也可以直接设置 `section.Layout.Direction`。整页切换时遍历所有分区设置后，一次性提交快照；不同分区可以混用 LTR 和 RTL。
+
+- Flow 从右侧开始向左排，换行后重新从右侧开始。
+- Columns 优先最短列；同高时优先右侧列，窄 Cell 靠列右侧。
+- Skyline 优先最低可放置位置；同高时优先右侧。
+- 非满宽页眉、页脚及吸顶页眉靠右；左右 Insets 仍指物理左边和右边，不自动交换。
+
+数据顺序、ID、尺寸测量方式及竖直滚动方向保持不变。运行时切换通过新快照或 `UpdateSection` 提交，组件会更新横向位置并尽量保持竖直滚动锚点。仅切换方向建议提交快照以复用未变的尺寸；`UpdateSection` 按原有契约强制重测和重绑整组。若语言切换同时改变文案或字体，还需更新条目 `Version` 或调用相应的尺寸/样式失效 API。自定义 `ICollectionLayout` 需要自行处理 `Direction`。Cell 内的文字方向、阿拉伯语连字、图标和内部排版由业务自己的文本/UI 组件处理。
 
 ## 5. Cell 绑定与复用
 
